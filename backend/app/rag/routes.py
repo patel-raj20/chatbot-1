@@ -6,7 +6,7 @@ from .rag_pipeline import ingest_pdf, ask_question
 from .minio_client import upload_pdf_to_minio
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import ChatMessage
+from app.models import ChatMessage, PDFDocument
 import uuid
 from .collection import get_collection
 
@@ -49,11 +49,29 @@ async def upload_pdf(file: UploadFile = File(...)):
         # Process PDF through existing RAG pipeline
         try:
             print(f"[UPLOAD] Starting PDF ingestion...")
-            ingest_pdf(temp_path)
-            print(f"[UPLOAD] Ingestion completed successfully")
+            chunk_count = ingest_pdf(temp_path, source_file=minio_object_name)
+            print(f"[UPLOAD] Ingestion completed successfully: {chunk_count} chunks")
         except Exception as e:
             print(f"[UPLOAD ERROR] PDF processing failed: {type(e).__name__}: {str(e)}")
             raise HTTPException(status_code=500, detail=f"PDF processing failed: {str(e)}")
+        
+        # Save PDF metadata to database
+        pdf_doc = PDFDocument(
+            id=uuid.uuid4(),
+            original_filename=file.filename,
+            minio_object_name=minio_object_name,
+            chunk_count=str(chunk_count)
+        )
+        db = next(get_db())
+        try:
+            db.add(pdf_doc)
+            db.commit()
+            print(f"[UPLOAD] Saved PDF metadata to database")
+        except Exception as e:
+            print(f"[UPLOAD WARNING] Failed to save PDF metadata: {e}")
+            db.rollback()
+        finally:
+            db.close()
         
         print(f"[UPLOAD] Returning success response")
         return JSONResponse(
@@ -61,7 +79,8 @@ async def upload_pdf(file: UploadFile = File(...)):
             content={
                 "status": "PDF indexed successfully",
                 "minio_object": minio_object_name,
-                "filename": file.filename
+                "filename": file.filename,
+                "chunks": chunk_count
             },
             headers={
                 "Access-Control-Allow-Origin": "*",
@@ -133,3 +152,50 @@ def clear_rag():
         return {"status": "RAG collection cleared"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Clear failed: {str(e)}")
+
+
+@router.get("/documents")
+def list_documents(db: Session = Depends(get_db)):
+    """List all uploaded PDF documents."""
+    try:
+        documents = db.query(PDFDocument).order_by(PDFDocument.upload_date.desc()).all()
+        return [{
+            "id": str(doc.id),
+            "filename": doc.original_filename,
+            "minio_object": doc.minio_object_name,
+            "upload_date": doc.upload_date.isoformat() if doc.upload_date else None,
+            "chunk_count": doc.chunk_count
+        } for doc in documents]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+
+
+@router.delete("/documents/{document_id}")
+def delete_document(document_id: str, db: Session = Depends(get_db)):
+    """Delete a specific PDF document and its vectors from the collection."""
+    try:
+        # Get document from database
+        doc = db.query(PDFDocument).filter(PDFDocument.id == uuid.UUID(document_id)).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Delete vectors from Milvus
+        col = get_collection()
+        expr = f'source_file == "{doc.minio_object_name}"'
+        col.delete(expr)
+        col.flush()
+        print(f"[DELETE] Removed vectors for {doc.minio_object_name}")
+        
+        # Delete from database
+        db.delete(doc)
+        db.commit()
+        
+        return {
+            "status": "Document deleted successfully",
+            "filename": doc.original_filename
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")

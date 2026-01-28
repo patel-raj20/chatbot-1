@@ -4,9 +4,16 @@ from .embedder import embed
 from .collection import get_collection
 from .retriever import retrieve
 
-def ingest_pdf(pdf_path: str):
+def ingest_pdf(pdf_path: str, source_file: str = "unknown"):
+    """
+    Ingest PDF and append vectors to existing collection
+    
+    Args:
+        pdf_path: Path to the PDF file
+        source_file: MinIO object name or identifier for tracking
+    """
     try:
-        print(f"[INGEST] Starting ingestion of {pdf_path}")
+        print(f"[INGEST] Starting ingestion of {pdf_path} (source: {source_file})")
         text = load_pdf(pdf_path)
         print(f"[INGEST] Loaded text: {len(text)} characters")
         chunks = chunk_text(text)
@@ -19,12 +26,16 @@ def ingest_pdf(pdf_path: str):
         print(f"[INGEST] Generated {len(embeddings)} embeddings")
 
         col = get_collection()
-        col.delete(expr="id >= 0")  # clear old data
-        print("[INGEST] Cleared collection")
-
-        col.insert([chunks, embeddings])
+        # NOTE: NOT clearing old data - appending new vectors
+        # This preserves all previously uploaded PDFs
+        
+        # Create source_file list matching chunks count
+        source_files = [source_file] * len(chunks)
+        
+        col.insert([chunks, embeddings, source_files])
         col.flush()
-        print("[INGEST] Successfully inserted and flushed to Milvus")
+        print(f"[INGEST] Successfully inserted {len(chunks)} chunks from {source_file}")
+        return len(chunks)
     except Exception as e:
         print(f"[INGEST ERROR] {type(e).__name__}: {str(e)}")
         raise

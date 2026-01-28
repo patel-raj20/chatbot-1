@@ -22,6 +22,7 @@ def get_collection():
         FieldSchema("id", DataType.INT64, is_primary=True, auto_id=True),
         FieldSchema("content", DataType.VARCHAR, max_length=2048),
         FieldSchema("embedding", DataType.FLOAT_VECTOR, dim=EMBEDDING_DIM),
+        FieldSchema("source_file", DataType.VARCHAR, max_length=256),
     ]
 
     schema = CollectionSchema(fields, "RAG collection")
