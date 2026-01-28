@@ -49,7 +49,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         # Process PDF through existing RAG pipeline
         try:
             print(f"[UPLOAD] Starting PDF ingestion...")
-            chunk_count = ingest_pdf(temp_path, source_file=minio_object_name)
+            chunk_count = ingest_pdf(temp_path, source_file=minio_object_name, original_filename=file.filename)
             print(f"[UPLOAD] Ingestion completed successfully: {chunk_count} chunks")
         except Exception as e:
             print(f"[UPLOAD ERROR] PDF processing failed: {type(e).__name__}: {str(e)}")

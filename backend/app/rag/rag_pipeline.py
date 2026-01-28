@@ -4,16 +4,17 @@ from .embedder import embed
 from .collection import get_collection
 from .retriever import retrieve
 
-def ingest_pdf(pdf_path: str, source_file: str = "unknown"):
+def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: str = "unknown"):
     """
     Ingest PDF and append vectors to existing collection
     
     Args:
         pdf_path: Path to the PDF file
         source_file: MinIO object name or identifier for tracking
+        original_filename: Original PDF filename from PostgreSQL
     """
     try:
-        print(f"[INGEST] Starting ingestion of {pdf_path} (source: {source_file})")
+        print(f"[INGEST] Starting ingestion of {pdf_path} (source: {source_file}, filename: {original_filename})")
         text = load_pdf(pdf_path)
         print(f"[INGEST] Loaded text: {len(text)} characters")
         chunks = chunk_text(text)
@@ -29,10 +30,11 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown"):
         # NOTE: NOT clearing old data - appending new vectors
         # This preserves all previously uploaded PDFs
         
-        # Create source_file list matching chunks count
+        # Create source_file and original_filename lists matching chunks count
         source_files = [source_file] * len(chunks)
+        original_filenames = [original_filename] * len(chunks)
         
-        col.insert([chunks, embeddings, source_files])
+        col.insert([chunks, embeddings, source_files, original_filenames])
         col.flush()
         print(f"[INGEST] Successfully inserted {len(chunks)} chunks from {source_file}")
         return len(chunks)
