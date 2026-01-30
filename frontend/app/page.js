@@ -1,21 +1,27 @@
+/**
+ * Chat Interface
+ * ==============
+ * Main chat page with RAG fallback mechanism.
+ * 
+ * CHAT FLOW:
+ *   1. User sends message
+ *   2. Try FAQ/Conversation Tree match
+ *   3. If no match + PDF uploaded → Try RAG
+ *   4. Display response with options (if any)
+ * 
+ * FEATURES:
+ *   - Session-based chat history
+ *   - FAQ quick answers
+ *   - Conversation tree navigation
+ *   - RAG-powered document search
+ *   - PDF upload support
+ */
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/';
-
-function generateUUID() {
-  if (crypto?.randomUUID) {
-    return crypto.randomUUID();
-  }
-
-  // fallback (RFC4122 v4-like)
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
+import { sendChatMessage, askRAGQuestion, fetchFAQs, uploadPDF } from "./lib/api";
+import { generateUUID } from "./lib/utils";
 
 export default function ChatTestUI() {
   const [sessionId, setSessionId] = useState(null);
@@ -34,50 +40,21 @@ export default function ChatTestUI() {
     setIsTyping(true);
 
     try {
-      // First: Try normal chat (FAQ + Tree-based)
-      const res = await fetch(`${API_BASE_URL}chat/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          message: text,
-          current_node_id: fromOption ? nodeContext : null,
-        }),
-      });
+      // STEP 1: Try FAQ/Conversation Tree
+      const data = await sendChatMessage(sessionId, text, fromOption ? nodeContext : null);
 
-      const data = await res.json();
-      
-      console.log("Chat Response:", data.reply);
-      console.log("Has Document:", hasDocument);
-      console.log("Is FAQ Click:", isFaqClick);
-
-      // Check if FAQ/Tree didn't match (returns "I don't understand" or "I didn't understand")
+      // Check if response indicates no match
       const replyLower = data.reply.toLowerCase();
       const didntMatch = replyLower.includes("don't understand") || 
                          replyLower.includes("didn't understand") ||
                          replyLower.includes("i'm not sure") ||
                          replyLower.includes("i don't know");
-      
-      console.log("Didn't match FAQ/Tree:", didntMatch);
 
-      // If didn't match FAQ/Tree AND document is uploaded, use RAG instead
+      // STEP 2: Try RAG if no match and document available
       if (didntMatch && hasDocument && !isFaqClick) {
-        console.log("✅ Switching to RAG...");
         try {
-          const ragRes = await fetch(`${API_BASE_URL}rag/ask?query=${encodeURIComponent(text)}&session_id=${encodeURIComponent(sessionId)}`, {
-            method: "POST"
-          });
+          const ragData = await askRAGQuestion(text, sessionId);
           
-          if (!ragRes.ok) {
-            console.error("RAG request failed:", ragRes.status);
-            throw new Error("RAG request failed");
-          }
-          
-          const ragData = await ragRes.json();
-          
-          console.log("RAG Response:", ragData);
-          
-          // Show RAG response (whatever it returns)
           setIsTyping(false);
           setMessages((prev) => [
             ...prev,
@@ -90,14 +67,11 @@ export default function ChatTestUI() {
           ]);
           return;
         } catch (err) {
-          console.error("❌ RAG failed:", err);
-          // If RAG fails, show the tree's "I don't understand"
+          // RAG failed, fall through to show tree response
         }
-      } else {
-        console.log("Using FAQ/Tree response (not switching to RAG)");
       }
 
-      // Show FAQ/Tree response (has answer or options)
+      // STEP 3: Show FAQ/Tree response
       setIsTyping(false);
       setMessages((prev) => [
         ...prev,
@@ -111,7 +85,6 @@ export default function ChatTestUI() {
 
       setCurrentNodeId(data.node_id ?? null);
     } catch (err) {
-      console.error("Error sending message:", err);
       setIsTyping(false);
       setMessages((prev) => [
         ...prev,
@@ -125,19 +98,27 @@ export default function ChatTestUI() {
     }
   }
 
+  /**
+   * Auto-scroll to bottom when new messages arrive
+   */
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  /**
+   * Initialize session and load FAQs on mount
+   */
   useEffect(() => {
     const id = generateUUID();
     setSessionId(id);
-    // Fetch FAQs
-    fetch(`${API_BASE_URL}faqs`)
-      .then(res => res.json())
+    
+    // Load FAQs
+    fetchFAQs()
       .then(data => setFaqs(data))
-      .catch(err => console.error("Failed to load FAQs:", err));
+      .catch(err => {
+        // Silently fail - FAQs not critical
+      });
     
     // Check if document is uploaded
     const docUploaded = localStorage.getItem("rag_document_uploaded");

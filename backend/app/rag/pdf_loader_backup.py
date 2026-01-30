@@ -98,43 +98,22 @@ def preprocess_image_for_ocr(image):
 
 
 def extract_text_with_ocr(file_path: str) -> str:
-    """
-    Extract text from scanned PDF using OCR.
-    
-    WHY: Scanned PDFs contain images, not text - need OCR
-    WHERE: Called by load_pdf() when text extraction yields minimal content
-    HOW: Converts PDF pages to images → OCR → text
-    
-    Args:
-        file_path: Path to PDF file
-        
-    Returns:
-        Extracted text from all pages
-        
-    Raises:
-        Exception: If OCR libraries not installed
-        FileNotFoundError: If Poppler not found
-        
-    DEPENDENCIES:
-        - Tesseract: OCR engine
-        - Poppler: PDF to image converter
-        - pdf2image: Python wrapper for Poppler
-    """
+    """Extract text from PDF using OCR (for scanned documents)"""
     if not OCR_AVAILABLE:
         raise Exception("OCR libraries not installed. Install: pip install pytesseract pdf2image Pillow opencv-python")
     
-    logger.info(f"Starting OCR extraction for {file_path}")
+    print(f"[OCR] Starting OCR for {file_path}")
     try:
         # Auto-detect Poppler on Windows or via environment variable POPPLER_PATH
         poppler_path = os.getenv('POPPLER_PATH')
         if poppler_path and os.path.exists(poppler_path):
-            logger.info(f"Using Poppler from POPPLER_PATH: {poppler_path}")
+            print(f"[OCR] Using Poppler from POPPLER_PATH: {poppler_path}")
         elif os.name == 'nt':  # Windows
             # Try default extracted location first (user home)
             default_poppler = os.path.expanduser(r"~\poppler\poppler-24.02.0\Library\bin")
             if os.path.exists(default_poppler):
                 poppler_path = default_poppler
-                logger.info(f"Found Poppler at default location: {poppler_path}")
+                print(f"[OCR] Found Poppler at default location: {poppler_path}")
             else:
                 poppler_path = None
                 possible_poppler_paths = [
@@ -149,23 +128,23 @@ def extract_text_with_ocr(file_path: str) -> str:
                 for path in possible_poppler_paths:
                     if os.path.exists(path):
                         poppler_path = path
-                        logger.info(f"Found Poppler at: {path}")
+                        print(f"[OCR] Found Poppler at: {path}")
                         break
                 if not poppler_path:
-                    logger.error("Poppler not found at any expected location. Set POPPLER_PATH env var or download Poppler.")
+                    print("[OCR ERROR] Poppler not found at any expected location. Set POPPLER_PATH env var or download Poppler.")
                     raise FileNotFoundError("Poppler executable not found. Install from https://github.com/oschwartz10612/poppler-windows/releases")
         
         # Convert PDF pages to images
-        logger.debug(f"Converting PDF to images with Poppler: {poppler_path}")
+        print(f"[OCR] Converting PDF to images with Poppler: {poppler_path}")
         if poppler_path:
             images = convert_from_path(file_path, dpi=OCR_DPI, poppler_path=poppler_path)
         else:
             images = convert_from_path(file_path, dpi=OCR_DPI)
         
-        logger.info(f"Generated {len(images)} images from PDF")
+        print(f"[OCR] Generated {len(images)} images from PDF")
         text = ""
         for i, image in enumerate(images):
-            logger.debug(f"Processing page {i+1}/{len(images)} with OCR...")
+            print(f"[OCR] Processing page {i+1}/{len(images)}...")
             
             # Preprocess image for better OCR
             processed_image = preprocess_image_for_ocr(image)
@@ -174,11 +153,11 @@ def extract_text_with_ocr(file_path: str) -> str:
             page_text = pytesseract.image_to_string(processed_image, lang=OCR_LANGUAGE)
             text += page_text + "\n"
         
-        logger.info(f"Successfully extracted {len(text)} characters using OCR")
+        print(f"[OCR] Successfully extracted {len(text)} characters using OCR")
         return text
         
     except Exception as e:
-        logger.error(f"OCR extraction failed: {type(e).__name__}: {e}")
+        print(f"[OCR ERROR] OCR extraction failed: {type(e).__name__}: {e}")
         raise
 
 
@@ -186,63 +165,50 @@ def load_pdf(file_path: str) -> str:
     """
     Load and extract text from PDF with hybrid OCR support.
     
-    WHY: Handles both digital and scanned PDFs
-    WHERE: Called by pipeline.py during PDF ingestion
-    HOW: Try standard extraction first → OCR fallback if needed
+    Strategy:
+    1. First, extract regular text from PDF
+    2. If OCR is enabled and available:
+       - If extracted text is insufficient, use full-page OCR
+       - Extract text from embedded images using OCR
+    3. Combine all text sources
     
-    Args:
-        file_path: Absolute path to PDF file
-        
-    Returns:
-        Extracted text content
-        
-    STRATEGY:
-        1. Extract standard text (PyPDF)
-        2. If minimal text AND OCR available → full OCR
-        3. Return combined text
-        
-    CONFIGURATION:
-        - OCR_ENABLED: Enable/disable OCR (config.py)
-        - OCR_MIN_TEXT_LENGTH: Threshold for triggering OCR (default 100)
-        - OCR_LANGUAGE: Tesseract language (default 'eng')
-        - OCR_DPI: Image resolution for OCR (default 300)
+    This ensures backward compatibility while adding OCR capabilities.
     """
-    logger.info(f"Loading PDF: {file_path}")
-    
+    print(f"[PDF_LOADER] Starting load_pdf for {file_path}")
     # Step 1: Extract regular text (existing functionality)
     reader = PdfReader(file_path)
     text = ""
     for page in reader.pages:
         text += page.extract_text() + "\n"
     text_length = len(text.strip())
-    logger.info(f"Standard extraction yielded {text_length} characters")
+    print(f"[PDF_LOADER] Standard extraction yielded {text_length} characters")
     
     # Step 2: Check if OCR enhancement is needed
     if OCR_ENABLED and OCR_AVAILABLE:
         # If very little text was extracted, the PDF might be scanned
         if text_length < OCR_MIN_TEXT_LENGTH:
-            logger.info(f"Minimal text ({text_length} < {OCR_MIN_TEXT_LENGTH}). Attempting full-page OCR...")
+            print(f"[PDF_LOADER] Minimal text ({text_length} < {OCR_MIN_TEXT_LENGTH}). Attempting full-page OCR...")
             try:
                 ocr_text = extract_text_with_ocr(file_path)
                 ocr_length = len(ocr_text.strip())
-                logger.info(f"OCR yielded {ocr_length} characters")
+                print(f"[PDF_LOADER] OCR yielded {ocr_length} characters")
                 # Use OCR text if it's significantly longer
                 if ocr_length > text_length:
-                    logger.info("Using OCR-extracted text (more comprehensive)")
+                    print("[PDF_LOADER] Using OCR-extracted text (more comprehensive)")
                     text = ocr_text
                     text_length = ocr_length
             except Exception as e:
-                logger.warning(f"Full-page OCR failed: {type(e).__name__}: {e}")
+                print(f"[PDF_LOADER WARNING] Full-page OCR failed: {type(e).__name__}: {e}")
         else:
-            logger.info(f"Sufficient text extracted ({text_length} >= {OCR_MIN_TEXT_LENGTH})")
+            print(f"[PDF_LOADER] Sufficient text extracted ({text_length} >= {OCR_MIN_TEXT_LENGTH})")
     else:
-        logger.debug(f"OCR disabled or unavailable (OCR_ENABLED={OCR_ENABLED}, OCR_AVAILABLE={OCR_AVAILABLE})")
+        print(f"[PDF_LOADER] OCR disabled or unavailable (OCR_ENABLED={OCR_ENABLED}, OCR_AVAILABLE={OCR_AVAILABLE})")
     
     # Fallback: If still no text, return error message
     if text_length < 10:
-        msg = "Could not extract text from PDF. Ensure it's a valid PDF or install OCR for scanned documents."
-        logger.error(msg)
-        return f"[ERROR] {msg}"
+        msg = "[ERROR] Could not extract text from PDF. Ensure it's a valid PDF or install OCR for scanned documents."
+        print(f"[PDF_LOADER] {msg}")
+        return msg
     
-    logger.info(f"Returning {text_length} characters from {file_path}")
+    print(f"[PDF_LOADER] Returning {text_length} characters")
     return text

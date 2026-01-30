@@ -1,3 +1,21 @@
+/**
+ * Admin Panel
+ * ===========
+ * Comprehensive admin interface for managing the chatbot.
+ * 
+ * FEATURES:
+ *   - Flow Editor: Visual conversation tree builder with drag-and-drop
+ *   - FAQ Management: Create/edit/delete frequently asked questions
+ *   - Chat History: View user conversations by session
+ *   - Document Upload: Upload PDFs for RAG knowledge base
+ * 
+ * TABS:
+ *   1. Flow: ReactFlow-based conversation tree editor
+ *   2. FAQs: FAQ CRUD interface
+ *   3. Chat History: Session browser with message viewer
+ *   4. Document Upload: RAG document management
+ */
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -13,6 +31,9 @@ import ReactFlow, {
   Position,
 } from "reactflow";
 import "reactflow/dist/style.css";
+import { uploadPDF } from "../lib/api";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 // Custom Node Component
 function CustomNode({ data }) {
@@ -126,7 +147,7 @@ export default function AdminPanel() {
   // Flow Functions
   const fetchNodes = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/admin/nodes");
+      const res = await fetch(`${API_BASE_URL}/admin/nodes`);
       const data = await res.json();
       setBackendNodes(data);
       convertToFlowNodes(data);
@@ -194,7 +215,7 @@ export default function AdminPanel() {
       if (optionText === null) return;
       
       try {
-        await fetch("http://127.0.0.1:8000/admin/edges", {
+        await fetch(`${API_BASE_URL}/admin/edges`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -214,7 +235,7 @@ export default function AdminPanel() {
   const onNodeDragStop = useCallback(
     async (event, node) => {
       try {
-        await fetch(`http://127.0.0.1:8000/admin/nodes/${node.id}`, {
+        await fetch(`${API_BASE_URL}/admin/nodes/${node.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -231,7 +252,7 @@ export default function AdminPanel() {
 
   const createNode = async () => {
     try {
-      await fetch("http://127.0.0.1:8000/admin/nodes", {
+      await fetch(`${API_BASE_URL}/admin/nodes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nodeForm)
@@ -246,7 +267,7 @@ export default function AdminPanel() {
 
   const updateNode = async (nodeId) => {
     try {
-      await fetch(`http://127.0.0.1:8000/admin/nodes/${nodeId}`, {
+      await fetch(`${API_BASE_URL}/admin/nodes/${nodeId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nodeForm)
@@ -263,7 +284,7 @@ export default function AdminPanel() {
     if (!confirm("Delete this node and all its connections?")) return;
     
     try {
-      await fetch(`http://127.0.0.1:8000/admin/nodes/${nodeId}`, {
+      await fetch(`${API_BASE_URL}/admin/nodes/${nodeId}`, {
         method: "DELETE"
       });
       fetchNodes();
@@ -276,7 +297,7 @@ export default function AdminPanel() {
     if (!confirm("Delete this connection?")) return;
     
     try {
-      await fetch(`http://127.0.0.1:8000/admin/edges/${edgeId}`, {
+      await fetch(`${API_BASE_URL}/admin/edges/${edgeId}`, {
         method: "DELETE"
       });
       fetchNodes();
@@ -299,7 +320,7 @@ export default function AdminPanel() {
   // FAQ Functions
   const fetchFaqs = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/admin/faqs");
+      const res = await fetch(`${API_BASE_URL}/admin/faqs`);
       const data = await res.json();
       setFaqs(data);
     } catch (err) {
@@ -309,7 +330,7 @@ export default function AdminPanel() {
 
   const createFaq = async () => {
     try {
-      await fetch("http://127.0.0.1:8000/admin/faqs", {
+      await fetch(`${API_BASE_URL}/admin/faqs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(faqForm)
@@ -324,7 +345,7 @@ export default function AdminPanel() {
 
   const updateFaq = async (faqId) => {
     try {
-      await fetch(`http://127.0.0.1:8000/admin/faqs/${faqId}`, {
+      await fetch(`${API_BASE_URL}/admin/faqs/${faqId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(faqForm)
@@ -341,7 +362,7 @@ export default function AdminPanel() {
     if (!confirm("Delete this FAQ?")) return;
     
     try {
-      await fetch(`http://127.0.0.1:8000/admin/faqs/${faqId}`, {
+      await fetch(`${API_BASE_URL}/admin/faqs/${faqId}`, {
         method: "DELETE"
       });
       fetchFaqs();
@@ -364,7 +385,7 @@ export default function AdminPanel() {
   // Chat History Functions
   const fetchSessions = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/admin/chat/sessions");
+      const res = await fetch(`${API_BASE_URL}/admin/chat/sessions`);
       const data = await res.json();
       setSessions(data);
     } catch (err) {
@@ -374,7 +395,7 @@ export default function AdminPanel() {
 
   const fetchSessionMessages = async (sessionId) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/admin/chat/sessions/${sessionId}`);
+      const res = await fetch(`${API_BASE_URL}/admin/chat/sessions/${sessionId}`);
       const data = await res.json();
       setMessagesBySession(prev => ({ ...prev, [sessionId]: data }));
     } catch (err) {
@@ -390,6 +411,11 @@ export default function AdminPanel() {
     }
   };
   // RAG Functions
+  /**
+   * Upload PDF document to RAG system
+   * 
+   * @param {Event} e - File input change event
+   */
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -397,24 +423,11 @@ export default function AdminPanel() {
     setIsUploading(true);
     setUploadStatus("Uploading...");
 
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const res = await fetch("http://127.0.0.1:8000/rag/upload-pdf", {
-        method: "POST",
-        body: formData
-      });
-
-      const data = await res.json();
-      
-      if (res.ok) {
-        setUploadStatus(`✅ Document uploaded successfully!`);
-        localStorage.setItem("rag_document_uploaded", "true");
-        setTimeout(() => setUploadStatus(""), 5000);
-      } else {
-        setUploadStatus(`❌ Upload failed: ${data.detail || "Unknown error"}`);
-      }
+      await uploadPDF(file);
+      setUploadStatus(`✅ Document uploaded successfully!`);
+      localStorage.setItem("rag_document_uploaded", "true");
+      setTimeout(() => setUploadStatus(""), 5000);
     } catch (err) {
       setUploadStatus(`❌ Upload failed: ${err.message}`);
     } finally {
