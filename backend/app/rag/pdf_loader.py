@@ -209,13 +209,27 @@ def load_pdf(file_path: str) -> str:
     """
     logger.info(f"Loading PDF: {file_path}")
     
-    # Step 1: Extract regular text (existing functionality)
-    reader = PdfReader(file_path)
+    # Step 1: Extract text with pdfplumber (better for tables)
     text = ""
-    for page in reader.pages:
-        text += page.extract_text() + "\n"
-    text_length = len(text.strip())
-    logger.info(f"Standard extraction yielded {text_length} characters")
+    text_length = 0
+    
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                page_text = page.extract_text(layout=True)  # layout=True preserves table structure
+                if page_text:
+                    text += page_text + "\n"
+        text_length = len(text.strip())
+        logger.info(f"pdfplumber extraction yielded {text_length} characters")
+    except Exception as e:
+        logger.warning(f"pdfplumber extraction failed: {e}. Falling back to pypdf...")
+        # Fallback to pypdf if pdfplumber fails
+        reader = PdfReader(file_path)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+        text_length = len(text.strip())
+        logger.info(f"pypdf fallback extraction yielded {text_length} characters")
     
     # Step 2: Check if OCR enhancement is needed
     if OCR_ENABLED and OCR_AVAILABLE:

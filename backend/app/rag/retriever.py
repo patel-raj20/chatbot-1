@@ -4,11 +4,11 @@ Vector Retriever
 Retrieves relevant document chunks using similarity search.
 
 HOW SIMILARITY SEARCH WORKS:
-    1. Convert user query to embedding (384-dim vector)
+    1. Convert user query to embedding (768-dim vector)
     2. Search Milvus for vectors similar to query vector
     3. Return text chunks with highest similarity scores
     
-SIMILARITY METRIC: Inner Product (IP)
+SIMILARITY METRIC: cosine similarity
     - Measures angle between vectors
     - Higher score = more similar
     - Range: 0.0 (unrelated) to 1.0 (identical)
@@ -67,7 +67,7 @@ def retrieve(query: str, top_k: int = 5, threshold: float = 0.3) -> list[str]:
         [q_emb],
         "embedding",
         param={
-            "metric_type": "IP",  # Inner Product (cosine similarity)
+            "metric_type": "COSINE",  # Cosine similarity
             "params": {"nprobe": 10}  # Number of clusters to search
         },
         limit=top_k,

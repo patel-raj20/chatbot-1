@@ -104,7 +104,7 @@ Answer (use only information from the context above):"""
                     "top_p": 0.9  # Nucleus sampling threshold
                 }
             },
-            timeout=60  # 60 second timeout
+            timeout=200  # 200 second timeout
         )
         
         # Check for HTTP errors

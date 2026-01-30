@@ -34,7 +34,7 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
     HOW:
         1. Extract text from PDF
         2. Split text into chunks (200 chars with 50 char overlap)
-        3. Generate embeddings for each chunk (384-dim vectors)
+        3. Generate embeddings for each chunk (768-dim vectors)
         4. Store in Milvus vector database
     
     Args:
@@ -65,7 +65,7 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
         embeddings = embed(chunks)
         if not embeddings:
             raise ValueError("No embeddings generated from PDF text; ingestion skipped.")
-        logger.debug(f"Generated {len(embeddings)} embeddings (384 dimensions each)")
+        logger.debug(f"Generated {len(embeddings)} embeddings (768 dimensions each)")
         
         # STEP 4: Store in Milvus
         col = get_collection()

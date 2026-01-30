@@ -1,7 +1,7 @@
 import os
 
 COLLECTION_NAME = "rag_documents"
-EMBEDDING_DIM = 384
+EMBEDDING_DIM = 768
 OLLAMA_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/generate"
 OLLAMA_MODEL = "gemma3"
 

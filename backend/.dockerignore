@@ -24,3 +24,11 @@ README.md
 .pytest_cache
 .coverage
 htmlcov
+.cache
+models/
+*.bin
+*.safetensors
+*.onnx
+*.msgpack
+pytorch_model.bin
+sentence_transformers/

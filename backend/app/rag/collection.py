@@ -11,7 +11,7 @@ WHAT IS A COLLECTION:
 COLLECTION SCHEMA:
     - id: Auto-generated unique ID
     - content: Original text chunk
-    - embedding: 384-dimensional vector
+    - embedding: 768-dimensional vector
     - source_file: MinIO object name
     - original_filename: User's original PDF name
     
@@ -45,7 +45,7 @@ def get_collection() -> Collection:
         fields = [
             id (INT64, primary, auto): Unique identifier
             content (VARCHAR, max 2048): Text chunk
-            embedding (FLOAT_VECTOR, dim 384): Vector representation
+            embedding (FLOAT_VECTOR, dim 768): Vector representation
             source_file (VARCHAR, max 256): MinIO object name
             original_filename (VARCHAR, max 256): Original PDF name
         ]
@@ -73,10 +73,10 @@ def get_collection() -> Collection:
     # Define collection fields (schema)
     fields = [
         FieldSchema("id", DataType.INT64, is_primary=True, auto_id=True),
-        FieldSchema("content", DataType.VARCHAR, max_length=2048),
+        FieldSchema("content", DataType.VARCHAR, max_length=10000),  # Increased from 2048 to support larger chunks
         FieldSchema("embedding", DataType.FLOAT_VECTOR, dim=EMBEDDING_DIM),
         FieldSchema("source_file", DataType.VARCHAR, max_length=256),
-        FieldSchema("original_filename", DataType.VARCHAR, max_length=256),
+        FieldSchema("original_filename", DataType.VARCHAR, max_length=2048),
     ]
     
     schema = CollectionSchema(fields, description="RAG document collection")
@@ -85,13 +85,13 @@ def get_collection() -> Collection:
     # Create index for fast similarity search
     # WHY: Without index, search would be slow (brute force)
     # IVF_FLAT: Inverted File with Flat compression
-    # metric_type=IP: Inner Product (cosine similarity)
+    # metric_type=COSINE: Cosine similarity
     logger.info("Creating index for fast vector search...")
     col.create_index(
         "embedding",
         {
             "index_type": "IVF_FLAT",
-            "metric_type": "IP",  # Inner Product (for normalized vectors)
+            "metric_type": "COSINE",  # Cosine similarity
             "params": {"nlist": 128}  # Number of clusters
         }
     )
