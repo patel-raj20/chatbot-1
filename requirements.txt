@@ -6,7 +6,7 @@ python-dotenv
 rapidfuzz
 pymilvus
 sentence-transformers
-pypdf
+pdfplumber
 python-multipart
 requests
 minio

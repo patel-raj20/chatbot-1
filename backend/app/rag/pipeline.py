@@ -16,7 +16,7 @@ WHERE USED: Called by RAG routes for upload and ask operations
 """
 
 from .pdf_loader import load_pdf
-from .chunker import chunk_text
+from .chunker import chunk_text_blocks
 from .embedder import embed
 from .collection import get_collection
 from .retriever import retrieve
@@ -51,12 +51,13 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
     try:
         logger.info(f"Starting PDF ingestion: {original_filename} (MinIO: {source_file})")
         
-        # STEP 1: Extract text from PDF
-        text = load_pdf(pdf_path)
-        logger.info(f"Extracted {len(text)} characters from PDF")
+        # STEP 1: Extract text and tables from PDF
+        content = load_pdf(pdf_path)
+        total_content = len(content.get("paragraphs", [])) + len(content.get("tables", []))
+        logger.info(f"Extracted {len(content.get('paragraphs', []))} paragraphs and {len(content.get('tables', []))} tables from PDF")
         
         # STEP 2: Split into chunks
-        chunks = chunk_text(text)
+        chunks = chunk_text_blocks(content)
         if not chunks:
             raise ValueError("No text extracted from PDF; ingestion skipped.")
         logger.info(f"Created {len(chunks)} text chunks")

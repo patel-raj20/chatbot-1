@@ -100,11 +100,11 @@ Answer (use only information from the context above):"""
                 "prompt": prompt,
                 "stream": False,  # Get complete response at once
                 "options": {
-                    "temperature": 0.8,  # Creativity (0.0=deterministic, 1.0=creative)
+                    "temperature": 0.7,  # Creativity (0.0=deterministic, 1.0=creative)
                     "top_p": 0.9  # Nucleus sampling threshold
                 }
             },
-            timeout=200  # 200 second timeout
+            timeout=120  # 120 second timeout
         )
         
         # Check for HTTP errors
@@ -130,7 +130,7 @@ Answer (use only information from the context above):"""
         )
         
     except requests.exceptions.Timeout:
-        logger.error("Ollama request timed out after 60 seconds")
+        logger.error("Ollama request timed out after 120 seconds")
         raise Exception(
             "Ollama request timed out. The model might be too slow or not responding."
         )
