@@ -28,6 +28,8 @@ from app.services.chat_service import (
     get_node_with_edges,
     follow_edge_to_next_node
 )
+from app.core.auth import get_current_user
+from app.models import User
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -35,12 +37,18 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/message", response_model=ChatResponse)
-def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
+def send_chat_message(
+    payload: ChatRequest, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """
     Process a chat message and return bot response.
     
+    AUTHENTICATION: Requires valid JWT token
+    
     HOW IT WORKS:
-        1. Save user's message to database
+        1. Save user's message to database (linked to user account)
         2. Determine which node to use:
            a) If current_node_id provided: Follow edge based on user's option
            b) If no current_node: Find entry node or FAQ
@@ -50,21 +58,27 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
     Args:
         payload: ChatRequest containing session_id, message, current_node_id
         db: Database session (injected)
+        current_user: Authenticated user (injected)
         
     Returns:
         ChatResponse with reply text, node_id, and options
         
     Raises:
         HTTPException: If invalid option selected (400)
+        HTTPException: If authentication fails (401)
     """
-    logger.info(f"Chat message received: session={payload.session_id}, message='{payload.message}'")
+    logger.info(
+        f"Chat message received: user={current_user.email}, "
+        f"session={payload.session_id}, message='{payload.message}'"
+    )
     
     # ========== STEP 1: Save user's message ==========
     save_chat_message(
         session_id=payload.session_id,
         sender="user",
         message_text=payload.message,
-        db=db
+        db=db,
+        user_id=current_user.id
     )
     
     # ========== STEP 2: Determine conversation node ==========
@@ -94,7 +108,8 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
                     sender="bot",
                     message_text=faq_answer,
                     db=db,
-                    node_id=None
+                    node_id=None,
+                    user_id=current_user.id
                 )
                 logger.info("Returning FAQ answer")
                 return ChatResponse(reply=faq_answer)
@@ -110,7 +125,8 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
                     session_id=payload.session_id,
                     sender="bot",
                     message_text=default_response,
-                    db=db
+                    db=db,
+                    user_id=current_user.id
                 )
                 logger.info("No match found - returning default response")
                 return ChatResponse(reply=default_response)
@@ -135,7 +151,8 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
         sender="bot",
         message_text=node.message_text,
         db=db,
-        node_id=node.id
+        node_id=node.id,
+        user_id=current_user.id
     )
     
     # ========== STEP 4: Get outgoing edges (options for user) ==========

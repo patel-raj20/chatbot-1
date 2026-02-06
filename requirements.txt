@@ -15,3 +15,6 @@ pdf2image
 Pillow
 opencv-python-headless
 groq
+python-jose[cryptography]
+passlib[bcrypt]
+pyjwt

@@ -4,6 +4,7 @@ Database Models
 SQLAlchemy ORM models defining the database schema.
 
 TABLES:
+    - users: User accounts with authentication
     - nodes: Conversation nodes (bot messages)
     - edges: Connections between nodes (conversation flow)
     - chat_messages: Chat history for all sessions
@@ -15,12 +16,77 @@ WHERE: Used by SQLAlchemy to create tables and query data
 HOW: Each class represents a table, columns define data types
 """
 
-from sqlalchemy import Column, Text, Boolean, ForeignKey, TIMESTAMP, Float
+from sqlalchemy import Column, Text, Boolean, ForeignKey, TIMESTAMP, Float, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import uuid
+import enum
 
 from .database import Base
+
+
+class UserRole(str, enum.Enum):
+    """
+    User Role Enumeration
+    =====================
+    Defines the two types of users in the system.
+    
+    WHY: Role-based access control for different user types
+    WHERE: Used in User model and authorization checks
+    HOW: Enum ensures only valid roles can be assigned
+    
+    ROLES:
+        user: Regular user - can only access chat page
+        admin: Administrator - can access both chat and admin pages
+    """
+    USER = "user"
+    ADMIN = "admin"
+
+
+class User(Base):
+    """
+    User Model
+    ==========
+    Stores user account information and authentication credentials.
+    
+    WHY: Manage user authentication and role-based authorization
+    WHERE: Referenced by ChatMessage model to link chats to users
+    HOW: Stores hashed passwords and user metadata
+    
+    FIELDS:
+        id: Unique identifier (UUID)
+        email: User email (unique, used for login)
+        username: Display name (unique)
+        hashed_password: Bcrypt hashed password (never store plain text!)
+        role: UserRole enum (user or admin)
+        is_active: Whether account is active (for disabling users)
+        created_at: Account creation timestamp
+        
+    ACCESS CONTROL:
+        role='user': Can access only chat page, sees own chat history
+        role='admin': Can access admin page + chat page, sees all chats
+        
+    SECURITY:
+        - Passwords are hashed using bcrypt before storage
+        - Email and username are unique (indexed for fast lookups)
+        - Default role is 'user' for public registration
+        
+    EXAMPLE:
+        email="john@example.com"
+        username="john_doe"
+        hashed_password="$2b$12$..."  (bcrypt hash)
+        role=UserRole.USER
+        is_active=True
+    """
+    __tablename__ = "users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(Text, unique=True, nullable=False, index=True)
+    username = Column(Text, unique=True, nullable=False, index=True)
+    hashed_password = Column(Text, nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
 
 
 class Node(Base):
@@ -104,13 +170,19 @@ class ChatMessage(Base):
     FIELDS:
         id: Unique identifier (UUID)
         session_id: Groups messages in same conversation
+        user_id: Links message to user account (for access control)
         sender: "user" or "bot"
         message_text: Content of the message
         node_id: Associated conversation node (null for FAQ/RAG responses)
         created_at: Timestamp when message was sent
         
+    ACCESS CONTROL:
+        - Regular users see only messages where user_id matches their account
+        - Admins see all messages regardless of user_id
+        - user_id can be null for legacy messages (before auth was added)
+        
     EXAMPLE SESSION:
-        session_id=abc-123
+        session_id=abc-123, user_id=user-xyz
         - Message 1: sender="user", message_text="hello"
         - Message 2: sender="bot", message_text="Hi! How can I help?"
         - Message 3: sender="user", message_text="I need support"
@@ -120,6 +192,7 @@ class ChatMessage(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(UUID(as_uuid=True), nullable=False)  # Groups messages together
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Owner of conversation
     sender = Column(Text, nullable=False)         # "user" or "bot"
     message_text = Column(Text, nullable=False)   # Message content
     node_id = Column(UUID(as_uuid=True), ForeignKey("nodes.id"), nullable=True)

@@ -112,7 +112,8 @@ def save_chat_message(
     sender: str,
     message_text: str,
     db: Session,
-    node_id: Optional[uuid.UUID] = None
+    node_id: Optional[uuid.UUID] = None,
+    user_id: Optional[uuid.UUID] = None
 ) -> ChatMessage:
     """
     Save a chat message to database for history tracking.
@@ -127,6 +128,7 @@ def save_chat_message(
         message_text: Message content
         db: Database session
         node_id: Associated conversation node (if any)
+        user_id: User ID (for access control)
         
     Returns:
         Created ChatMessage instance
@@ -134,13 +136,14 @@ def save_chat_message(
     message = ChatMessage(
         id=uuid.uuid4(),
         session_id=session_id,
+        user_id=user_id,
         sender=sender,
         message_text=message_text,
         node_id=node_id
     )
     db.add(message)
     db.commit()
-    logger.debug(f"Saved {sender} message to session {session_id}")
+    logger.debug(f"Saved {sender} message to session {session_id} for user {user_id}")
     return message
 
 

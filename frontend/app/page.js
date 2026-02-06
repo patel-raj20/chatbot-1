@@ -3,6 +3,9 @@
  * ==============
  * Main chat page with RAG fallback mechanism.
  * 
+ * AUTHENTICATION: Requires valid JWT token
+ * AUTHORIZATION: Regular users see only their own chat history
+ * 
  * CHAT FLOW:
  *   1. User sends message
  *   2. Try FAQ/Conversation Tree match
@@ -22,8 +25,9 @@
 import { useEffect, useRef, useState } from "react";
 import { sendChatMessage, askRAGQuestion, fetchFAQs, uploadPDF } from "./lib/api";
 import { generateUUID } from "./lib/utils";
+import ProtectedRoute from "./components/ProtectedRoute";
 
-export default function ChatTestUI() {
+function ChatTestUI() {
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -374,5 +378,14 @@ export default function ChatTestUI() {
         }
       `}</style>
     </div>
+  );
+}
+
+// Wrap with ProtectedRoute to require authentication
+export default function ProtectedChatPage() {
+  return (
+    <ProtectedRoute>
+      <ChatTestUI />
+    </ProtectedRoute>
   );
 }

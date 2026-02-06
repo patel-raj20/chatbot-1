@@ -3,6 +3,9 @@
  * ===========
  * Comprehensive admin interface for managing the chatbot.
  * 
+ * AUTHENTICATION: Requires admin role (role='admin')
+ * AUTHORIZATION: Only admins can access this panel
+ * 
  * FEATURES:
  *   - Flow Editor: Visual conversation tree builder with drag-and-drop
  *   - FAQ Management: Create/edit/delete frequently asked questions
@@ -32,6 +35,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { uploadPDF } from "../lib/api";
+import ProtectedRoute from "../components/ProtectedRoute";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -95,7 +99,18 @@ const nodeTypes = {
   custom: CustomNode,
 };
 
-export default function AdminPanel() {
+// ============= MAIN ADMIN PANEL COMPONENT =============
+
+// Helper function to get auth headers
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+};
+
+function AdminPanel() {
   const [activeTab, setActiveTab] = useState("flow");
   
   // Flow Editor State
@@ -147,7 +162,9 @@ export default function AdminPanel() {
   // Flow Functions
   const fetchNodes = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/nodes`);
+      const res = await fetch(`${API_BASE_URL}/admin/nodes`, {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       setBackendNodes(data);
       convertToFlowNodes(data);
@@ -217,7 +234,7 @@ export default function AdminPanel() {
       try {
         await fetch(`${API_BASE_URL}/admin/edges`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             from_node_id: params.source,
             to_node_id: params.target,
@@ -237,7 +254,7 @@ export default function AdminPanel() {
       try {
         await fetch(`${API_BASE_URL}/admin/nodes/${node.id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             position_x: node.position.x,
             position_y: node.position.y,
@@ -254,7 +271,7 @@ export default function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/nodes`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(nodeForm)
       });
       setNodeForm({ message_text: "", trigger_text: "", is_entry: false, position_x: 250, position_y: 100 });
@@ -269,7 +286,7 @@ export default function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/nodes/${nodeId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(nodeForm)
       });
       setNodeForm({ message_text: "", trigger_text: "", is_entry: false, position_x: 250, position_y: 100 });
@@ -332,7 +349,7 @@ export default function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/faqs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(faqForm)
       });
       setFaqForm({ question: "", answer: "", order: "0", is_active: true });
@@ -347,7 +364,7 @@ export default function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/faqs/${faqId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(faqForm)
       });
       setFaqForm({ question: "", answer: "", order: "0", is_active: true });
@@ -850,5 +867,14 @@ export default function AdminPanel() {
         </div>
       )}
     </div>
+  );
+}
+
+// Wrap with ProtectedRoute to require admin access
+export default function ProtectedAdminPage() {
+  return (
+    <ProtectedRoute requireAdmin={true}>
+      <AdminPanel />
+    </ProtectedRoute>
   );
 }

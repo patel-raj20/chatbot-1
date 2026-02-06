@@ -63,6 +63,24 @@ class Settings:
     # WHERE: Used in services/chat_service.py for fuzzy matching
     # HOW: 80 means 80% similarity required (0-100 scale)
     FUZZY_MATCH_THRESHOLD: int = int(os.getenv("FUZZY_MATCH_THRESHOLD", "80"))
+    
+    # ============= JWT AUTHENTICATION CONFIGURATION =============
+    # WHY: Secure user authentication and authorization
+    # WHERE: Used by core/security.py and core/auth.py for JWT tokens
+    # HOW: SECRET_KEY signs tokens, ALGORITHM specifies encryption method
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production-min-32-chars")
+    ALGORITHM: str = "HS256"  # HMAC with SHA-256
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    
+    # ============= HASURA CONFIGURATION =============
+    # WHY: Integration with Hasura GraphQL for authorization
+    # WHERE: Used by core/hasura.py to generate JWT with Hasura claims
+    # HOW: Hasura validates JWT using this secret key
+    HASURA_GRAPHQL_URL: str = os.getenv("HASURA_GRAPHQL_URL", "http://localhost:8080/v1/graphql")
+    HASURA_GRAPHQL_ADMIN_SECRET: str = os.getenv("HASURA_GRAPHQL_ADMIN_SECRET", "")
+    HASURA_JWT_SECRET_KEY: str = os.getenv("HASURA_JWT_SECRET_KEY", SECRET_KEY)
+    HASURA_JWT_ALGORITHM: str = os.getenv("HASURA_JWT_ALGORITHM", "HS256")
 
 
 # Create global settings instance

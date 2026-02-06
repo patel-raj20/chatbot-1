@@ -35,7 +35,7 @@ from sqlalchemy import func
 import uuid
 
 from app.database import get_db
-from app.models import Node, Edge, FAQ, ChatMessage
+from app.models import Node, Edge, FAQ, ChatMessage, User
 from app.schemas import (
     NodeCreate, NodeUpdate, NodeResponse, NodeWithEdges,
     EdgeCreate, EdgeResponse,
@@ -43,6 +43,7 @@ from app.schemas import (
     ChatSessionSummary, ChatMessageResponse
 )
 from app.services.faq_service import get_all_faqs, create_faq, update_faq, delete_faq
+from app.core.auth import require_admin
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -52,7 +53,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # ============= NODE MANAGEMENT =============
 
 @router.get("/nodes", response_model=list[NodeWithEdges])
-def get_all_nodes(db: Session = Depends(get_db)):
+def get_all_nodes(db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Get all conversation nodes with their edges for admin visualization.
     
@@ -102,7 +103,7 @@ def get_all_nodes(db: Session = Depends(get_db)):
 
 
 @router.get("/nodes/{node_id}", response_model=NodeWithEdges)
-def get_node(node_id: str, db: Session = Depends(get_db)):
+def get_node(node_id: str, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Get a specific conversation node with its edges.
     
@@ -156,7 +157,7 @@ def get_node(node_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/nodes", response_model=NodeResponse)
-def create_node(node: NodeCreate, db: Session = Depends(get_db)):
+def create_node(node: NodeCreate, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Create a new conversation node.
     
@@ -188,7 +189,7 @@ def create_node(node: NodeCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/nodes/{node_id}", response_model=NodeResponse)
-def update_node(node_id: str, node_update: NodeUpdate, db: Session = Depends(get_db)):
+def update_node(node_id: str, node_update: NodeUpdate, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Update an existing conversation node.
     
@@ -233,7 +234,7 @@ def update_node(node_id: str, node_update: NodeUpdate, db: Session = Depends(get
 
 
 @router.delete("/nodes/{node_id}")
-def delete_node(node_id: str, db: Session = Depends(get_db)):
+def delete_node(node_id: str, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Delete a conversation node and cleanup related data.
     
@@ -284,7 +285,7 @@ def delete_node(node_id: str, db: Session = Depends(get_db)):
 # ============= EDGE MANAGEMENT =============
 
 @router.get("/edges", response_model=list[EdgeResponse])
-def get_all_edges(db: Session = Depends(get_db)):
+def get_all_edges(db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Get all edges (connections between nodes).
     
@@ -302,7 +303,7 @@ def get_all_edges(db: Session = Depends(get_db)):
 
 
 @router.post("/edges", response_model=EdgeResponse)
-def create_edge(edge: EdgeCreate, db: Session = Depends(get_db)):
+def create_edge(edge: EdgeCreate, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Create a new edge (connection between two nodes).
     
@@ -344,7 +345,7 @@ def create_edge(edge: EdgeCreate, db: Session = Depends(get_db)):
 
 
 @router.delete("/edges/{edge_id}")
-def delete_edge(edge_id: str, db: Session = Depends(get_db)):
+def delete_edge(edge_id: str, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Delete an edge (connection).
     
@@ -378,7 +379,7 @@ def delete_edge(edge_id: str, db: Session = Depends(get_db)):
 # ============= FAQ MANAGEMENT =============
 
 @router.get("/faqs", response_model=list[FAQResponse])
-def get_all_faqs_admin(db: Session = Depends(get_db)):
+def get_all_faqs_admin(db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Get all FAQs including inactive ones (admin view).
     
@@ -394,7 +395,7 @@ def get_all_faqs_admin(db: Session = Depends(get_db)):
 
 
 @router.post("/faqs", response_model=FAQResponse)
-def create_faq_admin(faq: FAQCreate, db: Session = Depends(get_db)):
+def create_faq_admin(faq: FAQCreate, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Create a new FAQ entry.
     
@@ -411,7 +412,7 @@ def create_faq_admin(faq: FAQCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/faqs/{faq_id}", response_model=FAQResponse)
-def update_faq_admin(faq_id: str, faq_update: FAQUpdate, db: Session = Depends(get_db)):
+def update_faq_admin(faq_id: str, faq_update: FAQUpdate, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Update an existing FAQ entry.
     
@@ -435,7 +436,7 @@ def update_faq_admin(faq_id: str, faq_update: FAQUpdate, db: Session = Depends(g
 
 
 @router.delete("/faqs/{faq_id}")
-def delete_faq_admin(faq_id: str, db: Session = Depends(get_db)):
+def delete_faq_admin(faq_id: str, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Delete an FAQ entry.
     
@@ -460,7 +461,7 @@ def delete_faq_admin(faq_id: str, db: Session = Depends(get_db)):
 # ============= CHAT HISTORY =============
 
 @router.get("/chat/sessions", response_model=list[ChatSessionSummary])
-def get_chat_sessions(db: Session = Depends(get_db)):
+def get_chat_sessions(db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Get all chat sessions with summary information.
     
@@ -499,7 +500,7 @@ def get_chat_sessions(db: Session = Depends(get_db)):
 
 
 @router.get("/chat/sessions/{session_id}", response_model=list[ChatMessageResponse])
-def get_session_messages(session_id: str, db: Session = Depends(get_db)):
+def get_session_messages(session_id: str, db: Session = Depends(get_db), admin_user: User = Depends(require_admin)):
     """
     Get all messages within a specific chat session.
     
