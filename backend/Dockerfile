@@ -15,8 +15,15 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install CPU-only torch first (avoids large CUDA downloads)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Install sentence-transformers (will use already installed CPU torch)
+RUN pip install --no-cache-dir sentence-transformers
+
+# Install rest of Python dependencies (excluding sentence-transformers)
+RUN grep -v "sentence-transformers" requirements.txt > /tmp/requirements.txt && \
+    pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Copy backend application code
 COPY backend/ .

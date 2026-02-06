@@ -16,7 +16,7 @@ WHERE USED: Called by RAG routes for upload and ask operations
 """
 
 from .pdf_loader import load_pdf
-from .chunker import chunk_text_blocks
+from .chunker import chunk_text
 from .embedder import embed
 from .collection import get_collection
 from .retriever import retrieve
@@ -32,8 +32,8 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
     WHY: Converts PDF into searchable vector embeddings
     WHERE: Called when user uploads PDF via /rag/upload-pdf
     HOW:
-        1. Extract text from PDF
-        2. Split text into chunks (200 chars with 50 char overlap)
+        1. Extract text from PDF (digital or scanned)
+        2. Split text into optimized chunks (800 WORDS with 100 word overlap)
         3. Generate embeddings for each chunk (768-dim vectors)
         4. Store in Milvus vector database
     
@@ -51,13 +51,12 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
     try:
         logger.info(f"Starting PDF ingestion: {original_filename} (MinIO: {source_file})")
         
-        # STEP 1: Extract text and tables from PDF
-        content = load_pdf(pdf_path)
-        total_content = len(content.get("paragraphs", [])) + len(content.get("tables", []))
-        logger.info(f"Extracted {len(content.get('paragraphs', []))} paragraphs and {len(content.get('tables', []))} tables from PDF")
+        # STEP 1: Extract text from PDF
+        text = load_pdf(pdf_path)
+        logger.info(f"Extracted {len(text)} characters from PDF")
         
         # STEP 2: Split into chunks
-        chunks = chunk_text_blocks(content)
+        chunks = chunk_text(text)
         if not chunks:
             raise ValueError("No text extracted from PDF; ingestion skipped.")
         logger.info(f"Created {len(chunks)} text chunks")
@@ -96,7 +95,7 @@ def ask_question(query: str) -> str:
     WHERE: Called by /rag/ask endpoint when user asks question
     HOW:
         1. Retrieve relevant chunks from vector database
-        2. Pass chunks as context to LLM (Ollama)
+        2. Pass chunks as context to LLM (Groq)
         3. LLM generates answer based on context
     
     Args:
@@ -107,7 +106,7 @@ def ask_question(query: str) -> str:
         
     FALLBACKS:
         - No chunks found → "No relevant information found"
-        - Ollama unavailable → Return raw context chunks
+        - Groq unavailable → Return raw context chunks
     """
     # STEP 1: Retrieve relevant chunks
     chunks = retrieve(query)
@@ -126,6 +125,6 @@ def ask_question(query: str) -> str:
         answer = generate_answer(context, query)
         return answer
     except Exception as e:
-        logger.warning(f"Ollama LLM failed: {e}. Returning raw context.")
+        logger.warning(f"Groq LLM failed: {e}. Returning raw context.")
         # Fallback: Return context without LLM processing
-        return f"Based on the documents:\n\n{context}\n\n(Note: Ollama LLM is not available for advanced answering. Install Ollama to enable AI-powered responses)"
+        return f"Based on the documents:\n\n{context}\n\n(Note: Groq LLM is not available. Please check your GROQ_API_KEY in .env file)"
