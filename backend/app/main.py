@@ -31,8 +31,19 @@ from app.routes.admin import router as admin_router
 from app.rag.routes import router as rag_router
 from app.auth.routes import router as auth_router  # Authentication routes
 
+# Import cache services
+from app.cache.redis_client import RedisClient
+from app.cache.cache_service import CacheService
+
 # Initialize logger
 logger = get_logger(__name__)
+
+# ============= INITIALIZE REDIS CACHE =============
+# WHY: Global cache instance shared across all requests
+# WHERE: Used by chat routes to cache Q&A responses
+# HOW: Create Redis client and cache service instances
+redis_client = RedisClient()
+cache_service = CacheService(redis_client)
 
 # Create FastAPI application
 app = FastAPI(
@@ -79,14 +90,15 @@ logger.info("API routes registered")
 @app.on_event("startup")
 async def startup_event():
     """
-    Connect to Milvus vector database on application startup.
+    Connect to external services on application startup.
     
-    WHY: Milvus connection needed for RAG functionality
+    WHY: Database connections needed for RAG and caching functionality
     WHERE: Runs automatically when FastAPI starts
-    HOW: Attempts connection to Milvus, logs warning if unavailable
+    HOW: Attempts connections, logs warnings if unavailable
     """
     logger.info("Starting up application...")
     
+    # ========== CONNECT TO MILVUS ==========
     try:
         from pymilvus import connections
         connections.connect(
@@ -94,10 +106,41 @@ async def startup_event():
             host=settings.MILVUS_HOST,
             port=settings.MILVUS_PORT
         )
-        logger.info("Connected to Milvus vector database successfully")
+        logger.info("✓ Connected to Milvus vector database successfully")
     except Exception as e:
-        logger.warning(f"Could not connect to Milvus: {e}")
+        logger.warning(f"✗ Could not connect to Milvus: {e}")
         logger.warning("RAG functionality will be limited without Milvus")
+    
+    # ========== CONNECT TO REDIS CACHE ==========
+    if settings.CACHE_ENABLED:
+        try:
+            await redis_client.connect()
+            if await redis_client.ping():
+                logger.info(f"✓ Redis cache connected successfully (TTL: {settings.CACHE_TTL}s)")
+            else:
+                logger.warning("✗ Redis ping failed - cache will be disabled")
+        except Exception as e:
+            logger.warning(f"✗ Could not connect to Redis: {e}")
+            logger.warning("Cache functionality will be disabled - chatbot will work normally")
+
+
+# ============= SHUTDOWN EVENT =============
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Clean up resources on application shutdown.
+    
+    WHY: Proper cleanup prevents resource leaks
+    WHERE: Runs automatically when FastAPI shuts down
+    HOW: Closes Redis connection pool
+    """
+    logger.info("Shutting down application...")
+    
+    try:
+        await redis_client.disconnect()
+        logger.info("✓ Redis connection closed")
+    except Exception as e:
+        logger.error(f"✗ Error closing Redis connection: {e}")
 
 
 # ============= HEALTH CHECK ENDPOINT =============

@@ -18,6 +18,8 @@ FLOW:
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
+import time
+import json
 
 from app.database import get_db
 from app.schemas import ChatRequest, ChatResponse, Option
@@ -35,17 +37,20 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/message", response_model=ChatResponse)
-def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
+async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
     """
     Process a chat message and return bot response.
     
     HOW IT WORKS:
-        1. Save user's message to database
-        2. Determine which node to use:
+        1. Check Redis cache for answer (if new question, not node navigation)
+        2. If cache HIT: Return cached answer immediately
+        3. If cache MISS: Save user's message to database
+        4. Determine which node to use:
            a) If current_node_id provided: Follow edge based on user's option
            b) If no current_node: Find entry node or FAQ
-        3. Generate response with options (if node has outgoing edges)
-        4. Save bot's response to database
+        5. Generate response with options (if node has outgoing edges)
+        6. Cache the response (for future requests)
+        7. Save bot's response to database
     
     Args:
         payload: ChatRequest containing session_id, message, current_node_id
@@ -57,7 +62,54 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
     Raises:
         HTTPException: If invalid option selected (400)
     """
+    # Start timing for performance monitoring
+    request_start_time = time.time()
+    
     logger.info(f"Chat message received: session={payload.session_id}, message='{payload.message}'")
+    
+    # ========== STEP 0: CHECK CACHE (only for new questions, not node navigation) ==========
+    if payload.current_node_id is None:
+        try:
+            # Import cache service from main app
+            from app.main import cache_service
+            
+            cached_answer, cache_retrieval_time = await cache_service.get_cached_answer(payload.message)
+            
+            if cached_answer:
+                # Cache HIT - return cached response immediately
+                total_time = (time.time() - request_start_time) * 1000
+                logger.info(
+                    f"✓ CACHE HIT | Question: '{payload.message[:50]}...' | "
+                    f"Cache: {cache_retrieval_time:.2f}ms | Total: {total_time:.2f}ms"
+                )
+                
+                # Save user message to history (for tracking)
+                save_chat_message(
+                    session_id=payload.session_id,
+                    sender="user",
+                    message_text=payload.message,
+                    db=db
+                )
+                
+                # Parse cached response
+                response_dict = json.loads(cached_answer)
+                cached_reply = response_dict.get("reply", "")
+                
+                # Save bot message to history
+                save_chat_message(
+                    session_id=payload.session_id,
+                    sender="bot",
+                    message_text=cached_reply,
+                    db=db,
+                    node_id=response_dict.get("node_id")
+                )
+                
+                # Return cached response
+                return ChatResponse(**response_dict)
+                
+        except Exception as e:
+            # Cache error should not break the chat - log and continue
+            logger.warning(f"Cache retrieval error (will proceed normally): {e}")
     
     # ========== STEP 1: Save user's message ==========
     save_chat_message(
@@ -115,10 +167,57 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
                 logger.info("No match found - returning default response")
                 return ChatResponse(reply=default_response)
     
+    
     else:
         # User is continuing a conversation by selecting an option
         logger.debug(f"Following edge from node {payload.current_node_id}")
         
+        # ========== CHECK OPTION CACHE ==========
+        try:
+            from app.main import cache_service
+            
+            cached_option_response, cache_retrieval_time = await cache_service.get_cached_option_response(
+                str(payload.current_node_id),
+                payload.message
+            )
+            
+            if cached_option_response:
+                # Option cache HIT - return cached response immediately
+                total_time = (time.time() - request_start_time) * 1000
+                logger.info(
+                    f"✓ OPTION CACHE HIT | Node: {payload.current_node_id} | Option: '{payload.message}' | "
+                    f"Cache: {cache_retrieval_time:.2f}ms | Total: {total_time:.2f}ms"
+                )
+                
+                # Save user message to history
+                save_chat_message(
+                    session_id=payload.session_id,
+                    sender="user",
+                    message_text=payload.message,
+                    db=db
+                )
+                
+                # Parse cached response
+                response_dict = json.loads(cached_option_response)
+                cached_reply = response_dict.get("reply", "")
+                
+                # Save bot message to history
+                save_chat_message(
+                    session_id=payload.session_id,
+                    sender="bot",
+                    message_text=cached_reply,
+                    db=db,
+                    node_id=response_dict.get("node_id")
+                )
+                
+                # Return cached response
+                return ChatResponse(**response_dict)
+                
+        except Exception as e:
+            # Cache error should not break the chat
+            logger.warning(f"Option cache retrieval error (will proceed normally): {e}")
+        
+        # ========== FOLLOW EDGE (Cache MISS) ==========
         node = follow_edge_to_next_node(
             from_node_id=payload.current_node_id,
             option_text=payload.message,
@@ -141,6 +240,9 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
     # ========== STEP 4: Get outgoing edges (options for user) ==========
     _, edges = get_node_with_edges(node.id, db)
     
+    # Build response object
+    response = None
+    
     # Check for automatic transition (single edge with no option text)
     if len(edges) == 1 and edges[0].option_text is None:
         # Automatically follow to next node
@@ -149,33 +251,74 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
         
         if not next_node:
             logger.warning("Next node not found in automatic transition")
-            return ChatResponse(reply=node.message_text, node_id=node.id)
-        
-        if not next_edges:
+            response = ChatResponse(reply=node.message_text, node_id=node.id)
+        elif not next_edges:
             # Next node has no options
-            return ChatResponse(reply=next_node.message_text, node_id=next_node.id)
-        
-        # Return next node with its options
-        return ChatResponse(
-            reply=next_node.message_text,
-            node_id=next_node.id,
+            response = ChatResponse(reply=next_node.message_text, node_id=next_node.id)
+        else:
+            # Return next node with its options
+            response = ChatResponse(
+                reply=next_node.message_text,
+                node_id=next_node.id,
+                options=[
+                    Option(text=e.option_text, next_node_id=e.to_node_id)
+                    for e in next_edges if e.option_text
+                ]
+            )
+    elif not edges:
+        # No outgoing edges - end of conversation path
+        logger.debug("No outgoing edges - end of conversation path")
+        response = ChatResponse(reply=node.message_text, node_id=node.id)
+    else:
+        # Return current node with options
+        logger.debug(f"Returning {len(edges)} options to user")
+        response = ChatResponse(
+            reply=node.message_text,
+            node_id=node.id,
             options=[
                 Option(text=e.option_text, next_node_id=e.to_node_id)
-                for e in next_edges if e.option_text
+                for e in edges if e.option_text
             ]
         )
     
-    # Return current node with options (if any)
-    if not edges:
-        logger.debug("No outgoing edges - end of conversation path")
-        return ChatResponse(reply=node.message_text, node_id=node.id)
+    # ========== STEP 5: CACHE THE RESPONSE ==========
+    try:
+        from app.main import cache_service
+        
+        # Serialize response to JSON for caching
+        response_json = response.json()
+        
+        if payload.current_node_id is None:
+            # Cache new question response
+            await cache_service.cache_answer(payload.message, response_json)
+        else:
+            # Cache option selection response
+            await cache_service.cache_option_response(
+                str(payload.current_node_id),
+                payload.message,
+                response_json
+            )
+            
+    except Exception as e:
+        # Cache storage error should not break the chat
+        logger.warning(f"Failed to cache response: {e}")
     
-    logger.debug(f"Returning {len(edges)} options to user")
-    return ChatResponse(
-        reply=node.message_text,
-        node_id=node.id,
-        options=[
-            Option(text=e.option_text, next_node_id=e.to_node_id)
-            for e in edges if e.option_text
-        ]
-    )
+    # ========== STEP 6: LOG RESPONSE TIME ==========
+    total_time = (time.time() - request_start_time) * 1000
+    
+    if payload.current_node_id is None:
+        # Question-based request
+        logger.info(
+            f"✗ QUESTION CACHE MISS | Question: '{payload.message[:50]}...' | "
+            f"DB retrieval: {total_time:.2f}ms"
+        )
+    else:
+        # Option-based request
+        logger.info(
+            f"✗ OPTION CACHE MISS | Node: {payload.current_node_id} | Option: '{payload.message}' | "
+            f"DB retrieval: {total_time:.2f}ms"
+        )
+    
+    return response
+
+

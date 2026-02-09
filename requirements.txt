@@ -9,6 +9,7 @@ sentence-transformers
 pdfplumber
 python-multipart
 requests
+redis>=5.0.0
 minio
 pytesseract
 pdf2image
