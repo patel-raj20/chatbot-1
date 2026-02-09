@@ -1,613 +1,571 @@
-# JWT Authentication Integration Guide
-
-## Overview
-This project now includes JWT-based authentication with role-based access control (RBAC). Users can register accounts and login to access the chat interface. Admins have additional access to the admin panel.
+# Authentication System Guide
+## JWT-Based Authentication for Chatbot Application
 
 ---
 
-## 🎯 Features Implemented
+## 🎯 Overview
 
-### Backend (FastAPI)
-- ✅ User registration and login endpoints
-- ✅ JWT token generation with Hasura claims
-- ✅ Password hashing using bcrypt
-- ✅ Role-based access control (user/admin)
-- ✅ Protected routes with authentication middleware
-- ✅ User-specific chat history
+This document explains the complete authentication system implemented in the chatbot application.
 
-### Frontend (Next.js)
-- ✅ Login and registration pages
-- ✅ Auth context for global state management
-- ✅ Protected routes (chat page, admin panel)
-- ✅ Navigation bar with user info
-- ✅ Token storage in localStorage
-- ✅ Automatic token inclusion in API requests
+**Architecture:**
+- **Backend**: FastAPI with JWT + bcrypt
+- **Frontend**: Next.js with route guards
+- **Authorization**: Hasura GraphQL Engine (see [HASURA_INTEGRATION_GUIDE.md](HASURA_INTEGRATION_GUIDE.md))
+
+**Key Principle:**
+- Backend handles **AUTHENTICATION** (who you are)
+- Hasura handles **AUTHORIZATION** (what you can do)
+- Frontend provides route protection for UX
 
 ---
 
-## 📁 New Files Created
+## 🏗️ System Architecture
 
-### Backend Files
 ```
-backend/
-├── app/
-│   ├── core/
-│   │   ├── security.py          # Password hashing & JWT token management
-│   │   ├── auth.py               # Authentication dependencies
-│   │   └── hasura.py             # Hasura GraphQL integration helpers
-│   ├── routes/
-│   │   └── auth.py               # Authentication endpoints (register, login, me)
-│   └── services/
-│       └── auth_service.py       # Authentication business logic
-└── create_admin.py               # Script to create admin users
-```
-
-### Frontend Files
-```
-frontend/app/
-├── context/
-│   └── AuthContext.js            # Global auth state management
-├── components/
-│   ├── Navbar.js                 # Navigation with user info
-│   └── ProtectedRoute.js         # Route protection wrapper
-├── login/
-│   └── page.js                   # Login page
-└── register/
-    └── page.js                   # Registration page
+┌─────────────────┐
+│   Frontend      │
+│   (Next.js)     │
+│                 │
+│ - Login/Signup  │
+│ - Route Guards  │
+│ - JWT Storage   │
+└────────┬────────┘
+         │ JWT Token
+         ▼
+┌─────────────────┐      ┌──────────────┐
+│   Backend       │      │   Hasura     │
+│   (FastAPI)     │      │   GraphQL    │
+│                 │      │              │
+│ - Signup        │      │ - Permission │
+│ - Login         │◄─────┤   Rules      │
+│ - JWT Creation  │      │ - Row-level  │
+└────────┬────────┘      │   Security   │
+         │                └──────────────┘
+         ▼
+┌─────────────────┐
+│   PostgreSQL    │
+│                 │
+│ - users table   │
+│ - Other tables  │
+└─────────────────┘
 ```
 
 ---
 
-## 🔧 Updated Files
+## 📁 File Structure
 
-### Backend
-- `requirements.txt` - Added: `python-jose[cryptography]`, `passlib[bcrypt]`, `pyjwt`
-- `app/core/config.py` - Added JWT and Hasura configuration
-- `app/models.py` - Added `User` model and updated `ChatMessage` with `user_id`
-- `app/schemas.py` - Added auth-related schemas
-- `app/main.py` - Added auth router
-- `app/routes/admin.py` - Added admin-only middleware
-- `app/routes/chat.py` - Added authentication requirement
-- `app/services/chat_service.py` - Added `user_id` parameter
+### Backend (`backend/app/`)
 
-### Frontend
-- `app/layout.js` - Added AuthProvider and Navbar
-- `app/page.js` - Wrapped with ProtectedRoute
-- `app/admin/page.js` - Wrapped with ProtectedRoute (admin only)
-- `app/lib/api.js` - Added JWT token to API requests
-
----
-
-## 🚀 Setup Instructions
-
-### 1. Install Backend Dependencies
-
-```bash
-cd backend
-pip install -r requirements.txt
+```
+app/
+├── auth/                          # 🆕 Authentication module
+│   ├── __init__.py
+│   ├── routes.py                  # POST /auth/signup, /auth/login
+│   ├── schemas.py                 # Pydantic models
+│   └── utils.py                   # JWT + password hashing
+├── models.py                      # 🆕 Added User model
+├── main.py                        # 🆕 Registered auth routes
+└── ...                            # Existing files (unchanged)
 ```
 
-### 2. Configure Environment Variables
+### Frontend (`frontend/app/`)
 
-Create/update `.env` file in backend directory:
-
-```env
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/chatbot
-
-# JWT Configuration
-SECRET_KEY=your-super-secret-key-change-in-production-min-32-characters
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# Hasura Configuration (if using Hasura)
-HASURA_GRAPHQL_URL=http://localhost:8080/v1/graphql
-HASURA_GRAPHQL_ADMIN_SECRET=your-hasura-admin-secret
-HASURA_JWT_SECRET_KEY=your-super-secret-key-change-in-production
 ```
-
-⚠️ **Important**: Change `SECRET_KEY` to a strong random string in production!
-
-### 3. Run Database Migrations
-
-The User table will be created automatically on first run. If using existing database:
-
-```bash
-# Start backend (it will create tables automatically)
-cd backend
-python -m uvicorn app.main:app --reload
+app/
+├── auth/                          # 🆕 Authentication pages
+│   ├── login/
+│   │   └── page.js                # Login page
+│   └── signup/
+│       └── page.js                # Signup page
+├── chatbot/                       # 🆕 Protected chatbot
+│   └── page.js                    # Moved from root (with guards)
+├── admin/                         # 🆕 Protected admin panel
+│   └── page.js                    # Updated with admin guard
+├── lib/
+│   ├── auth.js                    # 🆕 Auth utilities
+│   ├── authGuard.js               # 🆕 Route protection hook
+│   └── api.js                     # 🆕 Updated with JWT
+└── page.js                        # 🆕 Landing/redirect page
 ```
-
-### 4. Create First Admin User
-
-```bash
-cd backend
-python create_admin.py
-```
-
-Follow the prompts to create your admin account:
-- Enter email address
-- Enter username
-- Enter password (min 6 characters)
-
-### 5. Start Services
-
-```bash
-# Terminal 1 - Backend
-cd backend
-uvicorn app.main:app --reload
-
-# Terminal 2 - Frontend  
-cd frontend
-npm run dev
-```
-
-### 6. Access the Application
-
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-
----
-
-## 👤 User Roles
-
-### Regular User (role='user')
-- ✅ Can register via public registration page
-- ✅ Can login and access chat page
-- ✅ Can see only their own chat history
-- ❌ Cannot access admin panel
-
-### Admin (role='admin')
-- ✅ Can access chat page
-- ✅ Can access admin panel
-- ✅ Can see all users' chat histories
-- ✅ Can manage nodes, edges, FAQs
 
 ---
 
 ## 🔐 Authentication Flow
 
-### Registration
+### 1. User Signup
+
 ```
-1. User visits /register
-2. Fills form (email, username, password)
-3. Backend creates user with role='user'
-4. Auto-login after successful registration
-5. Redirect to chat page
+User                Frontend              Backend               Database
+  │                    │                     │                     │
+  │  Enter username    │                     │                     │
+  │  + password        │                     │                     │
+  │───────────────────>│                     │                     │
+  │                    │                     │                     │
+  │                    │ POST /auth/signup   │                     │
+  │                    │ {username,password} │                     │
+  │                    │────────────────────>│                     │
+  │                    │                     │                     │
+  │                    │                     │ Hash password       │
+  │                    │                     │ (bcrypt)            │
+  │                    │                     │                     │
+  │                    │                     │ INSERT INTO users   │
+  │                    │                     │ role='user'         │
+  │                    │                     │────────────────────>│
+  │                    │                     │                     │
+  │                    │ Success message     │                     │
+  │                    │<────────────────────│                     │
+  │                    │                     │                     │
+  │  Redirect to login │                     │                     │
+  │<───────────────────│                     │                     │
 ```
 
-### Login
+**Key Points:**
+- Password is hashed with bcrypt before storage
+- All users default to `role='user'`
+- Admin role must be manually assigned
+
+---
+
+### 2. User Login
+
 ```
-1. User visits /login
-2. Enters email and password
-3. Backend verifies credentials
-4. Returns JWT token with user data
-5. Frontend stores token in localStorage
-6. Redirect to chat page
+User                Frontend              Backend               Database
+  │                    │                     │                     │
+  │  Enter credentials │                     │                     │
+  │───────────────────>│                     │                     │
+  │                    │                     │                     │
+  │                    │ POST /auth/login    │                     │
+  │                    │ {username,password} │                     │
+  │                    │────────────────────>│                     │
+  │                    │                     │                     │
+  │                    │                     │ SELECT * FROM users │
+  │                    │                     │ WHERE username=?    │
+  │                    │                     │────────────────────>│
+  │                    │                     │                     │
+  │                    │                     │ Verify password     │
+  │                    │                     │ (bcrypt.verify)     │
+  │                    │                     │                     │
+  │                    │                     │ Generate JWT        │
+  │                    │                     │ + Hasura claims     │
+  │                    │                     │                     │
+  │                    │ JWT + user info     │                     │
+  │                    │<────────────────────│                     │
+  │                    │                     │                     │
+  │  Store JWT in      │                     │                     │
+  │  localStorage      │                     │                     │
+  │                    │                     │                     │
+  │  Redirect based    │                     │                     │
+  │  on role           │                     │                     │
+  │<───────────────────│                     │                     │
 ```
 
-### Protected Routes
-```
-1. User navigates to protected page (/ or /admin)
-2. ProtectedRoute component checks authentication
-3. If not authenticated → redirect to /login
-4. If authenticated but not admin (for /admin) → redirect to / with error
-5. If authorized → render page content
+**JWT Token Structure:**
+```json
+{
+  "sub": "user-uuid-123",
+  "username": "john_doe",
+  "role": "user",
+  "exp": 1707500000,
+  "https://hasura.io/jwt/claims": {
+    "x-hasura-user-id": "user-uuid-123",
+    "x-hasura-default-role": "user",
+    "x-hasura-allowed-roles": ["user", "admin"]
+  }
+}
 ```
 
 ---
 
-## 🔑 API Authentication
+### 3. Authenticated Requests
 
-### Making Authenticated Requests
+```
+User                Frontend              Backend/Hasura
+  │                    │                     │
+  │  Visit /chatbot    │                     │
+  │───────────────────>│                     │
+  │                    │                     │
+  │                    │ Check JWT           │
+  │                    │ (authGuard)         │
+  │                    │                     │
+  │                    │ Valid? Continue     │
+  │                    │ Invalid? → /login   │
+  │                    │                     │
+  │  API Call          │                     │
+  │───────────────────>│                     │
+  │                    │                     │
+  │                    │ Add Authorization:  │
+  │                    │ Bearer <token>      │
+  │                    │────────────────────>│
+  │                    │                     │
+  │                    │                     │ Verify JWT
+  │                    │                     │ Check permissions
+  │                    │                     │ (if Hasura)
+  │                    │                     │
+  │                    │ Response            │
+  │                    │<────────────────────│
+  │                    │                     │
+  │  Display data      │                     │
+  │<───────────────────│                     │
+```
 
-All protected endpoints require JWT token in Authorization header:
+---
+
+## 👥 User Roles
+
+### 1. **user** (Default)
+
+**Access:**
+- ✅ Chatbot page (`/chatbot`)
+- ❌ Admin page (`/admin`)
+
+**Permissions (via Hasura):**
+- Read FAQs
+- Create own chat messages
+- View own chat history
+- Read conversation nodes
+
+**Frontend Behavior:**
+- Shows chatbot interface
+- No admin menu visible
+
+---
+
+### 2. **admin** (Manually Assigned)
+
+**Access:**
+- ✅ Chatbot page (`/chatbot`)
+- ✅ Admin page (`/admin`)
+
+**Permissions (via Hasura):**
+- Full access to all tables
+- Create/edit conversation flows
+- Manage FAQs
+- View all chat sessions
+- Upload documents
+
+**Frontend Behavior:**
+- Shows chatbot interface
+- Admin button visible in header
+- Can access admin panel
+
+---
+
+## 🛡️ Route Protection
+
+### Frontend Route Guards
+
+**Implementation:** `useAuthGuard()` hook
+
+**Usage:**
 
 ```javascript
-const response = await fetch('http://localhost:8000/chat/message', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`  // JWT token
-  },
-  body: JSON.stringify({...})
-});
+// Protect for any authenticated user
+function ChatbotPage() {
+  const { loading, user } = useAuthGuard();
+  
+  if (loading) return <div>Loading...</div>;
+  
+  return <div>Chatbot content</div>;
+}
+
+// Protect for admin only
+function AdminPage() {
+  const { loading, user } = useAuthGuard('admin');
+  
+  if (loading) return <div>Loading...</div>;
+  
+  return <div>Admin panel</div>;
+}
 ```
 
-### Frontend API Integration
+**Behavior:**
+- Not authenticated → Redirect to `/auth/login`
+- Authenticated but insufficient role → Redirect to `/chatbot`
+- Authorized → Render page
 
-The `api.js` file automatically includes tokens:
+---
 
-```javascript
-import { sendChatMessage } from './lib/api';
+## 🔑 Admin User Management
 
-// Token is automatically included from localStorage
-const response = await sendChatMessage(sessionId, message);
+### Creating First Admin
+
+Since all signups default to `user` role, you must manually promote users to admin.
+
+#### Method 1: Using Promotion Script (Recommended)
+
+```bash
+# List all users
+python backend/promote_admin.py --list
+
+# Promote specific user
+python backend/promote_admin.py john_doe
+```
+
+#### Method 2: Direct Database Update
+
+```sql
+-- Connect to PostgreSQL
+docker exec -it chatbot_postgres psql -U user -d chatbot
+
+-- Promote user
+UPDATE users SET role = 'admin' WHERE username = 'john_doe';
+
+-- Verify
+SELECT username, role, created_at FROM users;
+```
+
+#### After Promotion
+
+User must:
+1. **Log out** from frontend
+2. **Log in again** to get new JWT with admin role
+3. Can now access `/admin` route
+
+---
+
+## 🔧 Environment Variables
+
+### Backend (`backend/.env`)
+
+```bash
+# JWT Configuration
+JWT_SECRET_KEY="your-secret-key-change-this-in-production-use-minimum-32-characters"
+ACCESS_TOKEN_EXPIRE_DAYS=7
+
+# Database (existing)
+DATABASE_URL="postgresql://user:password@localhost:5432/chatbot"
+```
+
+**⚠️ IMPORTANT:**
+- Use a strong, random secret key in production
+- Never commit `.env` to version control
+- `JWT_SECRET_KEY` must match Hasura's `HASURA_GRAPHQL_JWT_SECRET`
+
+---
+
+## 🧪 Testing the System
+
+### 1. Test Signup
+
+```bash
+curl -X POST http://localhost:8000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "password": "testpass123"
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "message": "User created successfully",
+  "user": {
+    "username": "testuser",
+    "role": "user"
+  }
+}
 ```
 
 ---
 
-## 🛡️ Security Features
+### 2. Test Login
 
-### Password Security
-- ✅ Passwords hashed with bcrypt before storage
-- ✅ Salted hashes (prevents rainbow table attacks)
-- ✅ Minimum password length: 6 characters
-- ✅ Never stored as plain text
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "password": "testpass123"
+  }'
+```
 
-### Token Security
-- ✅ JWT tokens signed with SECRET_KEY
-- ✅ Tokens include expiration timestamp
-- ✅ Tokens validated on every request
-- ✅ Expired tokens automatically rejected
-- ✅ Includes Hasura claims for GraphQL authorization
-
-### API Security
-- ✅ All admin endpoints require admin role
-- ✅ Chat endpoints require authentication
-- ✅ Users can only see their own chat history
-- ✅ Admins can see all chat histories
+**Expected Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "username": "testuser",
+  "role": "user"
+}
+```
 
 ---
 
-## 📝 API Endpoints
+### 3. Test Frontend Flow
 
-### Authentication Endpoints
+1. **Visit:** http://localhost:3000
+   - Should redirect to `/auth/login`
 
-#### POST `/auth/register`
-Create new user account (public)
+2. **Signup:**
+   - Go to `/auth/signup`
+   - Create account
+   - Redirected to login
+
+3. **Login:**
+   - Enter credentials
+   - Redirected to `/chatbot` (for user)
+   - Redirected to `/admin` (for admin)
+
+4. **Protected Routes:**
+   - Try accessing `/admin` as user → Redirected to `/chatbot`
+   - Try accessing `/chatbot` without login → Redirected to `/auth/login`
+
+---
+
+## 🐛 Troubleshooting
+
+### Issue: "Invalid username or password"
+
+**Cause:** Incorrect credentials or user doesn't exist
+
+**Solution:**
+- Verify username is correct (case-sensitive)
+- Ensure user completed signup
+- Check database: `SELECT * FROM users;`
+
+---
+
+### Issue: "Token expired"
+
+**Cause:** JWT token has expired (default: 7 days)
+
+**Solution:**
+- Log out and log in again
+- Adjust `ACCESS_TOKEN_EXPIRE_DAYS` if needed
+
+---
+
+### Issue: Admin can't access `/admin`
+
+**Cause:** User role not updated or needs new JWT
+
+**Solution:**
+1. Verify role in database:
+   ```sql
+   SELECT username, role FROM users WHERE username = 'admin_user';
+   ```
+2. If role is correct, user must **log out and log in again**
+3. Decode JWT at https://jwt.io to verify role claim
+
+---
+
+### Issue: "Authorization header missing"
+
+**Cause:** Token not being sent with requests
+
+**Solution:**
+- Check `localStorage` has `auth_token`
+- Verify `getAuthHeaders()` in `api.js` is used
+- Check browser console for errors
+
+---
+
+## 🚀 Deployment Considerations
+
+### Production Checklist
+
+- [ ] Change `JWT_SECRET_KEY` to strong random value (min 32 chars)
+- [ ] Use environment variables for all secrets
+- [ ] Enable HTTPS for token transmission
+- [ ] Set appropriate CORS origins
+- [ ] Consider httpOnly cookies instead of localStorage
+- [ ] Implement refresh tokens for long sessions
+- [ ] Add rate limiting on auth endpoints
+- [ ] Log all authentication attempts
+- [ ] Regular security audits
+
+---
+
+## 📚 API Reference
+
+### POST `/auth/signup`
 
 **Request:**
 ```json
 {
-  "email": "user@example.com",
-  "username": "john_doe",
-  "password": "secure123"
+  "username": "string (3-50 chars)",
+  "password": "string (min 6 chars)"
 }
 ```
 
 **Response (201):**
 ```json
 {
-  "id": "uuid",
-  "email": "user@example.com",
-  "username": "john_doe",
-  "role": "user",
-  "is_active": true,
-  "created_at": "2024-01-29T10:30:00"
-}
-```
-
-#### POST `/auth/login`
-Login and receive JWT token
-
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "secure123"
-}
-```
-
-**Response (200):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer"
-}
-```
-
-#### GET `/auth/me`
-Get current user info (requires authentication)
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Response (200):**
-```json
-{
-  "id": "uuid",
-  "email": "user@example.com",
-  "username": "john_doe",
-  "role": "user",
-  "is_active": true,
-  "created_at": "2024-01-29T10:30:00"
-}
-```
-
----
-
-## 🔨 Managing Users
-
-### Create Admin User (Option 1: Script)
-
-```bash
-cd backend
-python create_admin.py
-```
-
-Select option 1 to create new admin user. Follow the prompts.
-
-### Create Admin User (Option 2: SQL)
-
-If you already have a user and want to promote them:
-
-```sql
-UPDATE users 
-SET role = 'admin' 
-WHERE email = 'user@example.com';
-```
-
-### List All Users (via Script)
-
-```bash
-cd backend
-python create_admin.py
-```
-
-Select option 2 to list all users.
-
-### Promote User to Admin (via Script)
-
-```bash
-cd backend
-python create_admin.py
-```
-
-Select option 3, then enter the user's email.
-
----
-
-## 🧪 Testing Authentication
-
-### Test User Registration
-
-```bash
-curl -X POST http://localhost:8000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "username": "testuser",
-    "password": "test123"
-  }'
-```
-
-### Test Login
-
-```bash
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "test123"
-  }'
-```
-
-Copy the `access_token` from response.
-
-### Test Protected Endpoint
-
-```bash
-curl -X POST http://localhost:8000/chat/message \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <your_token_here>" \
-  -d '{
-    "session_id": "uuid",
-    "message": "hello"
-  }'
-```
-
----
-
-## 🔗 Hasura Integration
-
-### JWT Token Structure
-
-Tokens include Hasura-specific claims for GraphQL authorization:
-
-```json
-{
-  "sub": "user_id",
-  "email": "user@example.com",
-  "role": "user",
-  "exp": 1234567890,
-  "https://hasura.io/jwt/claims": {
-    "x-hasura-allowed-roles": ["user"],
-    "x-hasura-default-role": "user",
-    "x-hasura-user-id": "user_id"
+  "message": "User created successfully",
+  "user": {
+    "username": "string",
+    "role": "user"
   }
 }
 ```
 
-### Hasura Configuration
-
-In your Hasura `docker-compose.yml`:
-
-```yaml
-HASURA_GRAPHQL_JWT_SECRET: '{"type":"HS256","key":"your-secret-key"}'
-HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
-```
-
-### Using Tokens with Hasura
-
-```javascript
-const response = await fetch(hasuraURL, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  },
-  body: JSON.stringify({
-    query: `query { users { id email } }`
-  })
-});
-```
+**Errors:**
+- `400`: Username already exists
+- `422`: Validation error
 
 ---
 
-## ❓ Troubleshooting
+### POST `/auth/login`
 
-### "Authentication required" error
-
-**Problem**: API returns 401 Unauthorized
-
-**Solutions**:
-1. Check if token exists in localStorage
-2. Verify token hasn't expired
-3. Confirm Authorization header is set correctly
-4. Try logging out and logging in again
-
-### "Admin access required" error
-
-**Problem**: User can't access admin panel
-
-**Solutions**:
-1. Check user's role in database: `SELECT role FROM users WHERE email = 'your@email.com';`
-2. If role is 'user', promote to admin: `UPDATE users SET role = 'admin' WHERE email = 'your@email.com';`
-3. Restart backend after database changes
-4. Logout and login again to get fresh token
-
-### Database errors on startup
-
-**Problem**: User table doesn't exist
-
-**Solution**:
-1. Ensure backend is running
-2. Tables are created automatically on startup
-3. Check DATABASE_URL in .env is correct
-4. Verify database permissions
-
-### Frontend shows "Redirecting to login..."
-
-**Problem**: Token invalid or expired
-
-**Solutions**:
-1. Clear localStorage: `localStorage.clear()` in browser console
-2. Logout and login again
-3. Check backend is running
-4. Verify SECRET_KEY hasn't changed
-
----
-
-## 📊 Database Schema
-
-### users table
-```sql
-CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  email VARCHAR UNIQUE NOT NULL,
-  username VARCHAR UNIQUE NOT NULL,
-  hashed_password VARCHAR NOT NULL,
-  role VARCHAR NOT NULL DEFAULT 'user',
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+**Request:**
+```json
+{
+  "username": "string",
+  "password": "string"
+}
 ```
 
-### chat_messages table (updated)
-```sql
-CREATE TABLE chat_messages (
-  id UUID PRIMARY KEY,
-  session_id UUID NOT NULL,
-  user_id UUID REFERENCES users(id),  -- NEW COLUMN
-  sender VARCHAR NOT NULL,
-  message_text TEXT NOT NULL,
-  node_id UUID REFERENCES nodes(id),
-  created_at TIMESTAMP DEFAULT NOW()
-);
+**Response (200):**
+```json
+{
+  "access_token": "jwt-token-string",
+  "token_type": "bearer",
+  "user_id": "uuid",
+  "username": "string",
+  "role": "user|admin"
+}
 ```
 
----
-
-## 🎨 Customization
-
-### Change Token Expiration
-
-In `backend/app/core/config.py`:
-
-```python
-ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # Change to desired minutes
-```
-
-### Customize User Roles
-
-To add more roles, update `backend/app/models.py`:
-
-```python
-class UserRole(str, enum.Enum):
-    USER = "user"
-    ADMIN = "admin"
-    MODERATOR = "moderator"  # New role
-```
-
-Then update authorization logic in `backend/app/core/auth.py`.
-
-### Change Password Requirements
-
-In `backend/app/routes/auth.py` and frontend registration:
-
-```python
-# Backend validation
-if len(password) < 8:  # Change minimum length
-    raise HTTPException(400, "Password must be at least 8 characters")
-```
+**Errors:**
+- `401`: Invalid credentials
+- `403`: Account inactive
 
 ---
 
-## ✅ Verification Checklist
+## 🎓 Security Best Practices
 
-- [ ] Backend starts without errors
-- [ ] Frontend starts without errors
-- [ ] Can register new user
-- [ ] Can login with created user
-- [ ] Chat page requires authentication
-- [ ] Admin panel requires admin role
-- [ ] Regular users cannot access admin panel
-- [ ] Admins can access admin panel
-- [ ] Logout works correctly
-- [ ] Token persists after page reload
-- [ ] Invalid tokens are rejected
-- [ ] Users see only their own chat history
-- [ ] Admins see all chat histories
+1. **Password Security:**
+   - ✅ Hashed with bcrypt (slow by design)
+   - ✅ Never logged or exposed in responses
+   - ✅ Minimum 6 characters enforced
 
----
+2. **JWT Security:**
+   - ✅ Short expiration (7 days default)
+   - ✅ Signed with secret key
+   - ✅ Includes minimal necessary claims
 
-## 📚 Next Steps
+3. **Frontend Security:**
+   - ⚠️ localStorage (consider httpOnly cookies in production)
+   - ✅ Route guards prevent unauthorized access
+   - ✅ Tokens not logged to console
 
-1. **Production Deployment**:
-   - Change `SECRET_KEY` to strong random value
-   - Use HTTPS for all endpoints
-   - Configure CORS for production domain
-   - Set secure cookie options
-
-2. **Additional Features**:
-   - Password reset functionality
-   - Email verification
-   - Remember me checkbox
-   - Session management
-   - User profile editing
-
-3. **Security Enhancements**:
-   - Rate limiting on auth endpoints
-   - Account lockout after failed attempts
-   - Two-factor authentication
-   - Refresh tokens with rotation
+4. **Database Security:**
+   - ✅ Passwords never stored in plain text
+   - ✅ Role changes require direct database access
+   - ✅ Admin promotion is manual process
 
 ---
 
-## 🤝 Support
+## 📖 Related Documentation
 
-If you encounter issues:
-1. Check the troubleshooting section above
-2. Review backend logs for error messages
-3. Check browser console for frontend errors
-4. Verify all environment variables are set correctly
+- [HASURA_INTEGRATION_GUIDE.md](HASURA_INTEGRATION_GUIDE.md) - Full Hasura setup
+- [ADMIN_GUIDE.md](ADMIN_GUIDE.md) - Admin panel usage
+- [README.md](README.md) - Project overview
 
 ---
 
-## 📄 License
-
-This authentication system is part of the Chat Bot project.
+**Questions?** Check the troubleshooting section or review the code comments in:
+- `backend/app/auth/routes.py`
+- `frontend/app/lib/authGuard.js`

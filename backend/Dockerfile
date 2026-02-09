@@ -4,12 +4,14 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for OpenCV and Tesseract
+# Install system dependencies for OpenCV, Tesseract, and build tools for bcrypt
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libgl1 \
     libglib2.0-0 \
     poppler-utils \
+    build-essential \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

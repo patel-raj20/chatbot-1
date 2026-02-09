@@ -1,10 +1,12 @@
 /**
- * Admin Panel
- * ===========
+ * Admin Panel (Protected)
+ * ========================
  * Comprehensive admin interface for managing the chatbot.
  * 
- * AUTHENTICATION: Requires admin role (role='admin')
- * AUTHORIZATION: Only admins can access this panel
+ * AUTHENTICATION:
+ *   - Requires admin role
+ *   - Redirects to /auth/login if not authenticated
+ *   - Redirects to /chatbot if authenticated but not admin
  * 
  * FEATURES:
  *   - Flow Editor: Visual conversation tree builder with drag-and-drop
@@ -22,6 +24,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import ReactFlow, {
   Background,
   Controls,
@@ -35,7 +38,8 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { uploadPDF } from "../lib/api";
-import ProtectedRoute from "../components/ProtectedRoute";
+import { useAuthGuard } from "../lib/authGuard";
+import { logout, getUserInfo } from "../lib/auth";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -99,18 +103,10 @@ const nodeTypes = {
   custom: CustomNode,
 };
 
-// ============= MAIN ADMIN PANEL COMPONENT =============
-
-// Helper function to get auth headers
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  };
-};
-
-function AdminPanel() {
+export default function AdminPanel() {
+  const router = useRouter();
+  const { loading, user } = useAuthGuard('ADMIN'); // Protect - admin only
+  
   const [activeTab, setActiveTab] = useState("flow");
   
   // Flow Editor State
@@ -162,9 +158,7 @@ function AdminPanel() {
   // Flow Functions
   const fetchNodes = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/nodes`, {
-        headers: getAuthHeaders()
-      });
+      const res = await fetch(`${API_BASE_URL}/admin/nodes`);
       const data = await res.json();
       setBackendNodes(data);
       convertToFlowNodes(data);
@@ -234,7 +228,7 @@ function AdminPanel() {
       try {
         await fetch(`${API_BASE_URL}/admin/edges`, {
           method: "POST",
-          headers: getAuthHeaders(),
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             from_node_id: params.source,
             to_node_id: params.target,
@@ -254,7 +248,7 @@ function AdminPanel() {
       try {
         await fetch(`${API_BASE_URL}/admin/nodes/${node.id}`, {
           method: "PUT",
-          headers: getAuthHeaders(),
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             position_x: node.position.x,
             position_y: node.position.y,
@@ -271,7 +265,7 @@ function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/nodes`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nodeForm)
       });
       setNodeForm({ message_text: "", trigger_text: "", is_entry: false, position_x: 250, position_y: 100 });
@@ -286,7 +280,7 @@ function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/nodes/${nodeId}`, {
         method: "PUT",
-        headers: getAuthHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nodeForm)
       });
       setNodeForm({ message_text: "", trigger_text: "", is_entry: false, position_x: 250, position_y: 100 });
@@ -349,7 +343,7 @@ function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/faqs`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(faqForm)
       });
       setFaqForm({ question: "", answer: "", order: "0", is_active: true });
@@ -364,7 +358,7 @@ function AdminPanel() {
     try {
       await fetch(`${API_BASE_URL}/admin/faqs/${faqId}`, {
         method: "PUT",
-        headers: getAuthHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(faqForm)
       });
       setFaqForm({ question: "", answer: "", order: "0", is_active: true });
@@ -452,15 +446,42 @@ function AdminPanel() {
       e.target.value = "";
     }
   };
+
+  // Show loading while auth check is in progress
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  const handleLogout = () => {
+    logout();
+    router.push('/auth/login');
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       {/* Header with Tabs */}
       <div className="bg-slate-900/50 backdrop-blur-lg border-b border-white/10 p-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
-          <a href="/" className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm">
-            ← Back to Chat
-          </a>
+          <div className="flex items-center gap-3">
+            <span className="text-purple-200 text-sm">👤 {user?.username}</span>
+            <button 
+              onClick={() => router.push('/chatbot')} 
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
+            >
+              ← Back to Chat
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm"
+            >
+              🚪 Logout
+            </button>
+          </div>
         </div>
         <div className="flex gap-2">
           <button
@@ -867,14 +888,5 @@ function AdminPanel() {
         </div>
       )}
     </div>
-  );
-}
-
-// Wrap with ProtectedRoute to require admin access
-export default function ProtectedAdminPage() {
-  return (
-    <ProtectedRoute requireAdmin={true}>
-      <AdminPanel />
-    </ProtectedRoute>
   );
 }

@@ -25,11 +25,11 @@ from app.core.logger import get_logger
 from app.core.config import settings
 
 # Import route modules
-from app.routes.auth import router as auth_router
 from app.routes.chat import router as chat_router
 from app.routes.faqs import router as faq_router
 from app.routes.admin import router as admin_router
 from app.rag.routes import router as rag_router
+from app.auth.routes import router as auth_router  # Authentication routes
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -66,16 +66,13 @@ logger.info("Database tables initialized")
 # WHY: Organizes endpoints by feature area
 # WHERE: Each router handles specific functionality
 # HOW: Routers are imported from separate modules and included here
-logger.info(f"Registering auth_router with {len(auth_router.routes)} routes")
-app.include_router(auth_router)   # /auth/* (register, login, me)
-logger.info("Auth router registered")
+app.include_router(auth_router)   # /auth/* (signup, login)
 app.include_router(chat_router)   # /chat/message
 app.include_router(faq_router)    # /faqs
 app.include_router(admin_router)  # /admin/*
 app.include_router(rag_router)    # /rag/*
 
 logger.info("API routes registered")
-logger.info(f"Total app routes: {len([r for r in app.routes])}")
 
 
 # ============= STARTUP EVENT =============

@@ -119,16 +119,6 @@ docker exec -it chatbot-ollama ollama pull llama2
 docker exec -it chatbot-ollama ollama pull mistral
 ```
 
-### 2. Run Database Migrations (if needed)
-```bash
-docker exec -it chatbot-backend python migrate_postgres.py
-```
-
-### 3. Create Initial FAQs (if needed)
-```bash
-docker exec -it chatbot-backend python create_faqs.py
-```
-
 ## Transferring to a New Computer
 
 ### Method 1: Git Repository (Recommended)

@@ -15,6 +15,7 @@ pdf2image
 Pillow
 opencv-python-headless
 groq
+# Authentication dependencies
 python-jose[cryptography]
 passlib[bcrypt]
-pyjwt
+bcrypt==4.1.2

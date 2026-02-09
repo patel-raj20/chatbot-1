@@ -253,8 +253,7 @@ Chat_bot/
 │   │   ├── models.py                # SQLAlchemy ORM models
 │   │   └── schemas.py               # Pydantic validation schemas
 │   │
-│   ├── create_faqs.py               # FAQ initialization script
-│   ├── migrate_postgres.py          # PostgreSQL migration utility
+│   ├── promote_admin.py             # Admin promotion utility
 │   ├── Dockerfile                   # Backend container definition
 │   └── requirements.txt             # Python dependencies
 │
@@ -895,12 +894,7 @@ For intelligent LLM responses:
    pip install -r ../requirements.txt
    ```
 
-4. (Optional) Initialize sample FAQs:
-   ```bash
-   python create_faqs.py
-   ```
-
-5. Start the FastAPI backend:
+4. Start the FastAPI backend:
    ```bash
    cd app
    uvicorn main:app --reload --host 0.0.0.0 --port 8000

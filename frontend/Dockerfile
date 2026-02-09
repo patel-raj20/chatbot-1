@@ -1,10 +1,13 @@
 # Frontend Dockerfile
+# Development stage
 FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
 RUN npm ci
+
+# This stage is used for development with hot reload
 
 # Build stage
 FROM node:20-alpine AS builder
