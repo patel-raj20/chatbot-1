@@ -24,7 +24,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { sendChatMessage, askRAGQuestion, fetchFAQs, uploadPDF } from "../lib/api";
+import { sendChatMessage, askRAGQuestion, fetchFAQs, uploadPDF, API_BASE_URL, getAuthHeaders } from "../lib/api";
 import { generateUUID } from "../lib/utils";
 import { useAuthGuard } from "../lib/authGuard";
 import { logout } from "../lib/auth";
@@ -33,7 +33,7 @@ import { useRouter } from "next/navigation";
 export default function ChatTestUI() {
   const router = useRouter();
   const { loading, user } = useAuthGuard(); // Protect this page
-  
+
   const [sessionId, setSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -55,16 +55,16 @@ export default function ChatTestUI() {
 
       // Check if response indicates no match
       const replyLower = data.reply.toLowerCase();
-      const didntMatch = replyLower.includes("don't understand") || 
-                         replyLower.includes("didn't understand") ||
-                         replyLower.includes("i'm not sure") ||
-                         replyLower.includes("i don't know");
+      const didntMatch = replyLower.includes("don't understand") ||
+        replyLower.includes("didn't understand") ||
+        replyLower.includes("i'm not sure") ||
+        replyLower.includes("i don't know");
 
       // STEP 2: Try RAG if no match and document available
       if (didntMatch && hasDocument && !isFaqClick) {
         try {
           const ragData = await askRAGQuestion(text, sessionId);
-          
+
           setIsTyping(false);
           setMessages((prev) => [
             ...prev,
@@ -77,6 +77,7 @@ export default function ChatTestUI() {
           ]);
           return;
         } catch (err) {
+          console.error("RAG fallback failed:", err);
           // RAG failed, fall through to show tree response
         }
       }
@@ -95,12 +96,13 @@ export default function ChatTestUI() {
 
       setCurrentNodeId(data.node_id ?? null);
     } catch (err) {
+      console.error("Chat error:", err);
       setIsTyping(false);
       setMessages((prev) => [
         ...prev,
         {
           sender: "bot",
-          text: "Sorry, something went wrong. Please try again.",
+          text: `Sorry, something went wrong: ${err.message}`,
           options: [],
           nodeId: null,
         },
@@ -122,17 +124,29 @@ export default function ChatTestUI() {
   useEffect(() => {
     const id = generateUUID();
     setSessionId(id);
-    
+
     // Load FAQs
     fetchFAQs()
       .then(data => setFaqs(data))
       .catch(err => {
-        // Silently fail - FAQs not critical
+        console.warn("Failed to load FAQs:", err);
       });
-    
-    // Check if document is uploaded
-    const docUploaded = localStorage.getItem("rag_document_uploaded");
-    setHasDocument(docUploaded === "true");
+
+    // Check document status from backend API (not localStorage)
+    // This ensures all users see the same document status across browsers
+    fetch(`${API_BASE_URL}/rag/documents`, {
+      headers: getAuthHeaders()
+    })
+      .then(res => res.json())
+      .then(docs => {
+        const hasDoc = docs && docs.length > 0;
+        setHasDocument(hasDoc);
+        console.log("Document status:", hasDoc ? `${docs.length} document(s) available` : "No documents");
+      })
+      .catch(err => {
+        console.warn("Failed to check document status:", err);
+        setHasDocument(false);
+      });
   }, []);
 
   // Show loading while auth check is in progress
@@ -152,7 +166,7 @@ export default function ChatTestUI() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 flex items-center justify-center p-6">
       <div className="w-full max-w-6xl h-[95vh] flex flex-col rounded-3xl overflow-hidden shadow-2xl bg-white mx-auto">
-        
+
         {/* Header - Vibrant Gradient */}
         <div className="relative bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 px-6 py-5 shadow-xl">
           <div className="absolute inset-0 bg-black/10"></div>
@@ -294,9 +308,9 @@ export default function ChatTestUI() {
                   <div className="absolute -inset-1 bg-gradient-to-r from-violet-200 to-purple-200 rounded-2xl blur opacity-25 transition duration-300"></div>
                   <div className="relative bg-white rounded-2xl rounded-tl-md px-5 py-4 shadow-lg border border-purple-100">
                     <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
-                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
-                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                     </div>
                   </div>
                 </div>

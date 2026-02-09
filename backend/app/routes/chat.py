@@ -139,7 +139,7 @@ def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db)):
     )
     
     # ========== STEP 4: Get outgoing edges (options for user) ==========
-    edges = get_node_with_edges(node.id, db)
+    _, edges = get_node_with_edges(node.id, db)
     
     # Check for automatic transition (single edge with no option text)
     if len(edges) == 1 and edges[0].option_text is None:
