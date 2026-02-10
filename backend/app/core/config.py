@@ -81,6 +81,15 @@ class Settings:
     CACHE_ENABLED: bool = os.getenv("CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
     CACHE_TTL: int = int(os.getenv("CACHE_TTL", "600"))  # Default 10 minutes (600 seconds)
     CACHE_KEY_PREFIX: str = "chatbot:qa"  # Prefix for all cache keys
+    
+    # ============= RABBITMQ CONFIGURATION =============
+    # WHY: RabbitMQ queues RAG jobs for async processing by workers
+    # WHERE: Used by queue/rabbitmq_client.py and worker.py
+    # HOW: Workers pull jobs from queue, process RAG, stream results via Redis Pub/Sub
+    RABBITMQ_HOST: str = os.getenv("RABBITMQ_HOST", "localhost")
+    RABBITMQ_PORT: int = int(os.getenv("RABBITMQ_PORT", "5672"))
+    RABBITMQ_USER: str = os.getenv("RABBITMQ_USER", "guest")
+    RABBITMQ_PASS: str = os.getenv("RABBITMQ_PASS", "guest")
 
 
 # Create global settings instance

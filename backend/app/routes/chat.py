@@ -111,20 +111,20 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
             # Cache error should not break the chat - log and continue
             logger.warning(f"Cache retrieval error (will proceed normally): {e}")
     
-    # ========== STEP 1: Save user's message ==========
-    save_chat_message(
-        session_id=payload.session_id,
-        sender="user",
-        message_text=payload.message,
-        db=db
-    )
-    
     # ========== STEP 2: Determine conversation node ==========
     node = None
     
     if payload.current_node_id is None:
         # User is starting a conversation or asking a new question
         logger.debug("No current node - searching for entry node or FAQ")
+        
+        # Save user's message for new questions
+        save_chat_message(
+            session_id=payload.session_id,
+            sender="user",
+            message_text=payload.message,
+            db=db
+        )
         
         # Try exact match with entry node trigger text
         from app.models import Node
@@ -140,7 +140,7 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
             faq_answer = find_faq_answer(payload.message, db)
             
             if faq_answer:
-                # FAQ found - save response and return
+                # FAQ found - save response and cache it
                 save_chat_message(
                     session_id=payload.session_id,
                     sender="bot",
@@ -148,8 +148,18 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
                     db=db,
                     node_id=None
                 )
+                
+                # Cache FAQ response for future requests
+                faq_response = ChatResponse(reply=faq_answer)
+                try:
+                    from app.main import cache_service
+                    await cache_service.cache_answer(payload.message, faq_response.json())
+                    logger.debug(f"FAQ answer cached for question: '{payload.message}'")
+                except Exception as e:
+                    logger.warning(f"Failed to cache FAQ response: {e}")
+                
                 logger.info("Returning FAQ answer")
-                return ChatResponse(reply=faq_answer)
+                return faq_response
             
             # Try fuzzy matching for similar entry nodes
             node = find_similar_node(payload.message, db)
@@ -158,19 +168,41 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
                 # No match found - return default message
                 # Frontend will try RAG if document is uploaded
                 default_response = "I didn't understand that."
-                save_chat_message(
-                    session_id=payload.session_id,
-                    sender="bot",
-                    message_text=default_response,
-                    db=db
-                )
+                
+                # DON'T save default response to database - it will be replaced
+                # by RAG answer if document is available. If RAG is not available,
+                # the "I didn't understand that" message isn't useful in history anyway.
+                # save_chat_message(
+                #     session_id=payload.session_id,
+                #     sender="bot",
+                #     message_text=default_response,
+                #     db=db
+                # )
+                
+                # Cache default response to avoid repeated processing
+                default_response_obj = ChatResponse(reply=default_response)
+                try:
+                    from app.main import cache_service
+                    await cache_service.cache_answer(payload.message, default_response_obj.json())
+                    logger.debug(f"Default response cached for question: '{payload.message}'")
+                except Exception as e:
+                    logger.warning(f"Failed to cache default response: {e}")
+                
                 logger.info("No match found - returning default response")
-                return ChatResponse(reply=default_response)
+                return default_response_obj
     
     
     else:
         # User is continuing a conversation by selecting an option
         logger.debug(f"Following edge from node {payload.current_node_id}")
+        
+        # Save user's message for option selection (before cache check to avoid duplicate)
+        save_chat_message(
+            session_id=payload.session_id,
+            sender="user",
+            message_text=payload.message,
+            db=db
+        )
         
         # ========== CHECK OPTION CACHE ==========
         try:
@@ -187,14 +219,6 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
                 logger.info(
                     f"✓ OPTION CACHE HIT | Node: {payload.current_node_id} | Option: '{payload.message}' | "
                     f"Cache: {cache_retrieval_time:.2f}ms | Total: {total_time:.2f}ms"
-                )
-                
-                # Save user message to history
-                save_chat_message(
-                    session_id=payload.session_id,
-                    sender="user",
-                    message_text=payload.message,
-                    db=db
                 )
                 
                 # Parse cached response

@@ -5,7 +5,8 @@ API endpoints for RAG (Retrieval-Augmented Generation) functionality.
 
 ENDPOINTS:
     POST /rag/upload-pdf    - Upload and process PDF
-    POST /rag/ask           - Ask question from documents
+    POST /rag/ask           - Ask question from documents (synchronous)
+    POST /rag/ask-stream    - Ask question with streaming (async via RabbitMQ)
     GET  /rag/debug         - Get RAG system statistics
     DELETE /rag/clear       - Clear all documents
     GET  /rag/documents     - List all uploaded PDFs
@@ -14,12 +15,14 @@ ENDPOINTS:
 RAG FLOW:
     1. UPLOAD: PDF → MinIO storage → Text extraction → Chunking → 
        Embeddings → Milvus vector DB
-    2. QUERY: Question → Embedding → Vector search → Context retrieval → 
+    2. QUERY (sync): Question → Embedding → Vector search → Context retrieval → 
        LLM → Answer
+    3. QUERY (stream): Question → RabbitMQ → Worker → RAG → Redis Pub/Sub → WebSocket
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import shutil
 import os
 from .pipeline import ingest_pdf, ask_question
@@ -30,6 +33,7 @@ from app.models import ChatMessage, PDFDocument
 from app.core.logger import get_logger
 import uuid
 from .collection import get_collection
+from app.queue.rabbitmq_client import get_rabbitmq_client, RabbitMQClient
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/rag", tags=["rag"])
@@ -142,10 +146,10 @@ async def upload_pdf(file: UploadFile = File(...)):
 @router.post("/ask")
 def ask(query: str, session_id: str | None = None, db: Session = Depends(get_db)):
     """
-    Answer question using RAG system.
+    Answer question using RAG system (SYNCHRONOUS - returns complete answer).
     
     WHY: Provide answers from uploaded documents
-    WHERE: Called from frontend when user asks question
+    WHERE: Called from frontend when user asks question (legacy endpoint)
     HOW:
         1. Query RAG pipeline (retrieves and generates answer)
         2. Optionally save answer to chat history
@@ -156,6 +160,8 @@ def ask(query: str, session_id: str | None = None, db: Session = Depends(get_db)
         
     Returns:
         {"answer": "Generated answer text"}
+        
+    NOTE: For streaming responses, use /rag/ask-stream instead
     """
     logger.info(f"RAG query received: '{query}'")
     answer = ask_question(query)
@@ -178,6 +184,120 @@ def ask(query: str, session_id: str | None = None, db: Session = Depends(get_db)
     
     logger.info("RAG answer generated successfully")
     return {"answer": answer}
+
+
+# Request schema for streaming endpoint
+class StreamingRAGRequest(BaseModel):
+    question: str
+    user_id: str
+    session_id: str | None = None
+
+
+@router.post("/ask-stream")
+async def ask_stream(
+    payload: StreamingRAGRequest,
+    rmq: RabbitMQClient = Depends(get_rabbitmq_client)
+):
+    """
+    Ask question using RAG with STREAMING (via RabbitMQ + Worker + WebSocket).
+    
+    WHY: Better UX with real-time streaming responses
+    WHERE: Called from frontend for RAG questions
+    HOW:
+        1. Generate unique request_id
+        2. Push job to RabbitMQ queue
+        3. Return request_id to client
+        4. Client connects to WebSocket with request_id
+        5. Worker processes job and streams via Redis Pub/Sub
+        6. WebSocket forwards tokens to client
+    
+    FLOW:
+        HTTP → RabbitMQ → Worker → Redis Pub/Sub → WebSocket → Client
+    
+    Args:
+        payload: {question, user_id, session_id}
+        rmq: RabbitMQ client (injected)
+        
+    Returns:
+        {
+            "request_id": "uuid",
+            "status": "queued",
+            "websocket_url": "/ws/chat/{request_id}"
+        }
+        
+    Example Client Usage:
+        ```javascript
+        // Step 1: Send question via HTTP
+        const response = await fetch('/rag/ask-stream', {
+            method: 'POST',
+            body: JSON.stringify({
+                question: "What is ML?",
+                user_id: "user-123",
+                session_id: "session-456"
+            })
+        });
+        const data = await response.json();
+        
+        // Step 2: Connect to WebSocket with request_id
+        const ws = new WebSocket(`ws://localhost:8000/ws/chat/${data.request_id}`);
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'token') {
+                displayToken(msg.content);
+            } else if (msg.type === 'done') {
+                ws.close();
+            }
+        };
+        ```
+        
+    IMPORTANT: This endpoint does NOT cache RAG answers (as per requirements)
+    """
+    try:
+        # STEP 1: Generate unique request_id
+        request_id = str(uuid.uuid4())
+        
+        logger.info(f"\n{'='*60}")
+        logger.info(f"📤 Streaming RAG request received")
+        logger.info(f"   Request ID: {request_id}")
+        logger.info(f"   User: {payload.user_id}")
+        logger.info(f"   Question: {payload.question}")
+        logger.info(f"{'='*60}\n")
+        
+        # STEP 2: Create job data
+        job_data = {
+            "request_id": request_id,
+            "user_id": payload.user_id,
+            "question": payload.question,
+            "session_id": payload.session_id
+        }
+        
+        # STEP 3: Push job to RabbitMQ
+        success = rmq.publish_job(job_data)
+        
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to queue job. RabbitMQ may be unavailable."
+            )
+        
+        logger.info(f"✓ Job queued successfully: {request_id}")
+        
+        # STEP 4: Return request_id and WebSocket URL
+        return {
+            "request_id": request_id,
+            "status": "queued",
+            "websocket_url": f"/ws/chat/{request_id}",
+            "message": "Job queued. Connect to WebSocket to receive streaming response."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to queue streaming RAG job: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to queue job: {str(e)}"
+        )
 
 
 @router.get("/debug")

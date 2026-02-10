@@ -30,18 +30,15 @@ from app.routes.faqs import router as faq_router
 from app.routes.admin import router as admin_router
 from app.rag.routes import router as rag_router
 from app.auth.routes import router as auth_router  # Authentication routes
-
-# Import cache services
-from app.cache.redis_client import RedisClient
-from app.cache.cache_service import CacheService
+from app.routes.websocket import router as websocket_router  # WebSocket routes
 
 # Initialize logger
 logger = get_logger(__name__)
 
-# ============= INITIALIZE REDIS CACHE =============
-# WHY: Global cache instance shared across all requests
-# WHERE: Used by chat routes to cache Q&A responses
-# HOW: Create Redis client and cache service instances
+# Initialize Redis client and Cache service
+from app.cache.redis_client import RedisClient
+from app.cache.cache_service import CacheService
+
 redis_client = RedisClient()
 cache_service = CacheService(redis_client)
 
@@ -77,11 +74,12 @@ logger.info("Database tables initialized")
 # WHY: Organizes endpoints by feature area
 # WHERE: Each router handles specific functionality
 # HOW: Routers are imported from separate modules and included here
-app.include_router(auth_router)   # /auth/* (signup, login)
-app.include_router(chat_router)   # /chat/message
-app.include_router(faq_router)    # /faqs
-app.include_router(admin_router)  # /admin/*
-app.include_router(rag_router)    # /rag/*
+app.include_router(auth_router)       # /auth/* (signup, login)
+app.include_router(chat_router)       # /chat/message
+app.include_router(faq_router)        # /faqs
+app.include_router(admin_router)      # /admin/*
+app.include_router(rag_router)        # /rag/*
+app.include_router(websocket_router)  # /ws/* (WebSocket streaming)
 
 logger.info("API routes registered")
 
@@ -90,15 +88,27 @@ logger.info("API routes registered")
 @app.on_event("startup")
 async def startup_event():
     """
-    Connect to external services on application startup.
+    Connect to Milvus vector database and initialize services on application startup.
     
-    WHY: Database connections needed for RAG and caching functionality
+    WHY: Milvus connection needed for RAG functionality
     WHERE: Runs automatically when FastAPI starts
-    HOW: Attempts connections, logs warnings if unavailable
+    HOW: Attempts connection to Milvus, logs warning if unavailable
     """
     logger.info("Starting up application...")
     
-    # ========== CONNECT TO MILVUS ==========
+    # Initialize Redis connection
+    try:
+        await redis_client.connect()
+        if redis_client.is_connected:
+            logger.info("✓ Connected to Redis cache successfully")
+            logger.info(f"✓ Cache Service ready (enabled={cache_service.enabled}, TTL={cache_service.ttl}s)")
+        else:
+            logger.warning("Redis connection failed - caching will be disabled")
+    except Exception as e:
+        logger.warning(f"Could not connect to Redis: {e}")
+        logger.warning("Caching functionality will be unavailable")
+    
+    # Connect to Milvus
     try:
         from pymilvus import connections
         connections.connect(
@@ -108,20 +118,19 @@ async def startup_event():
         )
         logger.info("✓ Connected to Milvus vector database successfully")
     except Exception as e:
-        logger.warning(f"✗ Could not connect to Milvus: {e}")
+        logger.warning(f"Could not connect to Milvus: {e}")
         logger.warning("RAG functionality will be limited without Milvus")
     
-    # ========== CONNECT TO REDIS CACHE ==========
-    if settings.CACHE_ENABLED:
-        try:
-            await redis_client.connect()
-            if await redis_client.ping():
-                logger.info(f"✓ Redis cache connected successfully (TTL: {settings.CACHE_TTL}s)")
-            else:
-                logger.warning("✗ Redis ping failed - cache will be disabled")
-        except Exception as e:
-            logger.warning(f"✗ Could not connect to Redis: {e}")
-            logger.warning("Cache functionality will be disabled - chatbot will work normally")
+    # Initialize RabbitMQ connection
+    try:
+        from app.queue.rabbitmq_client import get_rabbitmq_client
+        rmq = get_rabbitmq_client()
+        logger.info("✓ RabbitMQ client initialized successfully")
+    except Exception as e:
+        logger.warning(f"Could not initialize RabbitMQ: {e}")
+        logger.warning("Streaming RAG functionality will be unavailable")
+    
+    logger.info("Application startup complete")
 
 
 # ============= SHUTDOWN EVENT =============
@@ -130,17 +139,20 @@ async def shutdown_event():
     """
     Clean up resources on application shutdown.
     
-    WHY: Proper cleanup prevents resource leaks
-    WHERE: Runs automatically when FastAPI shuts down
-    HOW: Closes Redis connection pool
+    WHY: Properly close connections to avoid resource leaks
+    WHERE: Runs automatically when FastAPI stops
+    HOW: Closes Redis connection
     """
     logger.info("Shutting down application...")
     
+    # Close Redis connection
     try:
         await redis_client.disconnect()
         logger.info("✓ Redis connection closed")
     except Exception as e:
-        logger.error(f"✗ Error closing Redis connection: {e}")
+        logger.warning(f"Error closing Redis connection: {e}")
+    
+    logger.info("Application shutdown complete")
 
 
 # ============= HEALTH CHECK ENDPOINT =============
