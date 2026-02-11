@@ -87,44 +87,48 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
         raise
 
 
-def ask_question(query: str) -> str:
-    """
-    Answer question using RAG (Retrieval-Augmented Generation).
-    
-    WHY: Provides accurate answers from uploaded documents
-    WHERE: Called by /rag/ask endpoint when user asks question
-    HOW:
-        1. Retrieve relevant chunks from vector database
-        2. Pass chunks as context to LLM (Groq)
-        3. LLM generates answer based on context
-    
-    Args:
-        query: User's question
-        
-    Returns:
-        Generated answer from LLM or fallback message
-        
-    FALLBACKS:
-        - No chunks found → "No relevant information found"
-        - Groq unavailable → Return raw context chunks
-    """
-    # STEP 1: Retrieve relevant chunks
-    chunks = retrieve(query)
-    
-    if not chunks:
-        logger.warning(f"No relevant chunks found for query: '{query}'")
-        return "I couldn't find relevant information in the uploaded documents. Please make sure you've uploaded a document first."
-    
-    # STEP 2: Combine chunks into context
-    context = "\n\n".join(chunks)
-    logger.debug(f"Combined {len(chunks)} chunks into context ({len(context)} chars)")
-    
-    # STEP 3: Generate answer using LLM
-    try:
-        from .ollama_client import generate_answer
-        answer = generate_answer(context, query)
-        return answer
-    except Exception as e:
-        logger.warning(f"Groq LLM failed: {e}. Returning raw context.")
-        # Fallback: Return context without LLM processing
-        return f"Based on the documents:\n\n{context}\n\n(Note: Groq LLM is not available. Please check your GROQ_API_KEY in .env file)"
+# ============================================================================
+# SYNCHRONOUS ASK_QUESTION - COMMENTED OUT
+# Using ask_question_streaming() from pipeline_streaming.py for async flow
+# ============================================================================
+# def ask_question(query: str) -> str:
+#     """
+#     Answer question using RAG (Retrieval-Augmented Generation).
+#     
+#     WHY: Provides accurate answers from uploaded documents
+#     WHERE: Called by /rag/ask endpoint when user asks question
+#     HOW:
+#         1. Retrieve relevant chunks from vector database
+#         2. Pass chunks as context to LLM (Groq)
+#         3. LLM generates answer based on context
+#     
+#     Args:
+#         query: User's question
+#         
+#     Returns:
+#         Generated answer from LLM or fallback message
+#         
+#     FALLBACKS:
+#         - No chunks found → "No relevant information found"
+#         - Groq unavailable → Return raw context chunks
+#     """
+#     # STEP 1: Retrieve relevant chunks
+#     chunks = retrieve(query)
+#     
+#     if not chunks:
+#         logger.warning(f"No relevant chunks found for query: '{query}'")
+#         return "I couldn't find relevant information in the uploaded documents. Please make sure you've uploaded a document first."
+#     
+#     # STEP 2: Combine chunks into context
+#     context = "\n\n".join(chunks)
+#     logger.debug(f"Combined {len(chunks)} chunks into context ({len(context)} chars)")
+#     
+#     # STEP 3: Generate answer using LLM
+#     try:
+#         from .ollama_client import generate_answer
+#         answer = generate_answer(context, query)
+#         return answer
+#     except Exception as e:
+#         logger.warning(f"Groq LLM failed: {e}. Returning raw context.")
+#         # Fallback: Return context without LLM processing
+#         return f"Based on the documents:\n\n{context}\n\n(Note: Groq LLM is not available. Please check your GROQ_API_KEY in .env file)"
