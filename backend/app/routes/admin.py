@@ -44,9 +44,10 @@ from app.schemas import (
 )
 from app.services.faq_service import get_all_faqs, create_faq, update_faq, delete_faq
 from app.core.logger import get_logger
+from app.auth.utils import require_admin
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 # ============= NODE MANAGEMENT =============

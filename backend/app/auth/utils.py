@@ -19,6 +19,9 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 
 # ============= PASSWORD HASHING CONFIGURATION =============
 # WHY: bcrypt is industry standard for password hashing
@@ -188,3 +191,57 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+security = HTTPBearer()
+
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Extract and validate JWT token from Authorization header.
+    
+    Args:
+        credentials: Bearer token from Authorization header
+        
+    Returns:
+        Token payload dict
+        
+    Raises:
+        HTTPException 401: Invalid or expired token
+    """
+    token = credentials.credentials
+    payload = decode_access_token(token)
+    
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    return payload
+
+
+def require_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Require admin role for endpoint access.
+    
+    Raises:
+        HTTPException 401: Invalid token
+        HTTPException 403: User is not admin
+    """
+    token = credentials.credentials
+    payload = decode_access_token(token)
+    
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    if payload.get("role") != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    return payload

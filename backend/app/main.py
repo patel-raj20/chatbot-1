@@ -46,7 +46,8 @@ cache_service = CacheService(redis_client)
 app = FastAPI(
     title="Intelligent Chat Bot API",
     description="RAG-powered chatbot with conversation flow management",
-    version="1.0.0"
+    version="1.0.0",
+    swagger_ui_parameters={"persistAuthorization": True}
 )
 
 # ============= CORS CONFIGURATION =============
@@ -82,6 +83,32 @@ app.include_router(rag_router)        # /rag/*
 app.include_router(websocket_router)  # /ws/* (WebSocket streaming)
 
 logger.info("API routes registered")
+
+# ============= CONFIGURE OPENAPI SCHEMA =============
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    from fastapi.openapi.utils import get_openapi
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    openapi_schema["components"]["securitySchemes"] = {
+        "HTTPBearer": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT"
+        }
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 
 # ============= STARTUP EVENT =============

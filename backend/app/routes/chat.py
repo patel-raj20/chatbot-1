@@ -31,9 +31,10 @@ from app.services.chat_service import (
     follow_edge_to_next_node
 )
 from app.core.logger import get_logger
+from app.auth.utils import get_current_user
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/message", response_model=ChatResponse)

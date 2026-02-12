@@ -36,7 +36,8 @@ from .collection import get_collection
 from app.queue.rabbitmq_client import get_rabbitmq_client, RabbitMQClient
 
 logger = get_logger(__name__)
-router = APIRouter(prefix="/rag", tags=["rag"])
+from app.auth.utils import require_admin
+router = APIRouter(prefix="/rag", tags=["rag"], dependencies=[Depends(require_admin)])
 
 @router.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
