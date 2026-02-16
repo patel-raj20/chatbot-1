@@ -24,7 +24,6 @@ MESSAGE FORMAT:
 
 import pika
 import json
-import time
 from typing import Dict, Any, Optional, Callable
 from app.core.logger import get_logger
 from app.core.config import settings
@@ -59,88 +58,67 @@ class RabbitMQClient:
         self.channel: Optional[pika.channel.Channel] = None
         self._is_connected = False
     
-    def connect(self, max_retries: int = 5, retry_delay: int = 2) -> None:
+    def connect(self) -> None:
         """
-        Establish connection to RabbitMQ server with automatic retry.
+        Establish connection to RabbitMQ server.
         
-        WHY: Connection pooling improves performance, retries handle startup timing
+        WHY: Connection pooling improves performance
         WHERE: Called once during app startup (API) or worker initialization
         HOW:
             1. Connect to RabbitMQ using credentials from settings
             2. Create channel (like a session)
             3. Declare exchange and queue (idempotent - safe to call multiple times)
             4. Bind queue to exchange with routing key
-            5. Retry with exponential backoff if connection fails
-        
-        Args:
-            max_retries: Maximum number of connection attempts (default: 5)
-            retry_delay: Initial delay between retries in seconds (default: 2)
         
         Raises:
-            Exception: If connection fails after all retries
+            Exception: If connection fails (check RabbitMQ is running)
         """
-        last_error = None
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                # Build connection parameters
-                credentials = pika.PlainCredentials(
-                    settings.RABBITMQ_USER,
-                    settings.RABBITMQ_PASS
-                )
-                
-                parameters = pika.ConnectionParameters(
-                    host=settings.RABBITMQ_HOST,
-                    port=settings.RABBITMQ_PORT,
-                    credentials=credentials,
-                    heartbeat=600,  # Keep connection alive
-                    blocked_connection_timeout=300,
-                    connection_attempts=3,  # Internal pika retries
-                    retry_delay=1  # Delay between internal retries
-                )
-                
-                # Establish connection
-                logger.info(f"Connecting to RabbitMQ at {settings.RABBITMQ_HOST}:{settings.RABBITMQ_PORT}... (attempt {attempt}/{max_retries})")
-                self.connection = pika.BlockingConnection(parameters)
-                self.channel = self.connection.channel()
-                
-                # Declare exchange (direct type for simple routing)
-                self.channel.exchange_declare(
-                    exchange=self.EXCHANGE_NAME,
-                    exchange_type='direct',
-                    durable=True  # Survive RabbitMQ restarts
-                )
-                
-                # Declare queue
-                self.channel.queue_declare(
-                    queue=self.QUEUE_NAME,
-                    durable=True  # Survive RabbitMQ restarts
-                )
-                
-                # Bind queue to exchange
-                self.channel.queue_bind(
-                    exchange=self.EXCHANGE_NAME,
-                    queue=self.QUEUE_NAME,
-                    routing_key=self.ROUTING_KEY
-                )
-                
-                self._is_connected = True
-                logger.info("✓ RabbitMQ connection established successfully")
-                return  # Success, exit retry loop
-                
-            except Exception as e:
-                last_error = e
-                logger.warning(f"RabbitMQ connection attempt {attempt}/{max_retries} failed: {e}")
-                
-                if attempt < max_retries:
-                    # Exponential backoff: 2s, 4s, 8s, 16s, 32s
-                    wait_time = retry_delay * (2 ** (attempt - 1))
-                    logger.info(f"Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time)
-                else:
-                    # All retries exhausted
-                    logger.error(f"Failed to connect to RabbitMQ after {max_retries} attempts")
-                    raise last_error
+        try:
+            # Build connection parameters
+            credentials = pika.PlainCredentials(
+                settings.RABBITMQ_USER,
+                settings.RABBITMQ_PASS
+            )
+            
+            parameters = pika.ConnectionParameters(
+                host=settings.RABBITMQ_HOST,
+                port=settings.RABBITMQ_PORT,
+                credentials=credentials,
+                heartbeat=600,  # Keep connection alive
+                blocked_connection_timeout=300
+            )
+            
+            # Establish connection
+            logger.info(f"Connecting to RabbitMQ at {settings.RABBITMQ_HOST}:{settings.RABBITMQ_PORT}...")
+            self.connection = pika.BlockingConnection(parameters)
+            self.channel = self.connection.channel()
+            
+            # Declare exchange (direct type for simple routing)
+            self.channel.exchange_declare(
+                exchange=self.EXCHANGE_NAME,
+                exchange_type='direct',
+                durable=True  # Survive RabbitMQ restarts
+            )
+            
+            # Declare queue
+            self.channel.queue_declare(
+                queue=self.QUEUE_NAME,
+                durable=True  # Survive RabbitMQ restarts
+            )
+            
+            # Bind queue to exchange
+            self.channel.queue_bind(
+                exchange=self.EXCHANGE_NAME,
+                queue=self.QUEUE_NAME,
+                routing_key=self.ROUTING_KEY
+            )
+            
+            self._is_connected = True
+            logger.info("✓ RabbitMQ connection established successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to connect to RabbitMQ: {e}")
+            raise
     
     def publish_job(self, job_data: Dict[str, Any]) -> bool:
         """

@@ -5,8 +5,8 @@ API endpoints for RAG (Retrieval-Augmented Generation) functionality.
 
 ENDPOINTS:
     POST /rag/upload-pdf    - Upload and process PDF
-    # POST /rag/ask           - Ask question from documents (synchronous) [COMMENTED OUT]
-    POST /rag/ask-stream    - Ask question with streaming (async via RabbitMQ) [ACTIVE]
+    POST /rag/ask           - Ask question from documents (synchronous)
+    POST /rag/ask-stream    - Ask question with streaming (async via RabbitMQ)
     GET  /rag/debug         - Get RAG system statistics
     DELETE /rag/clear       - Clear all documents
     GET  /rag/documents     - List all uploaded PDFs
@@ -15,9 +15,9 @@ ENDPOINTS:
 RAG FLOW:
     1. UPLOAD: PDF → MinIO storage → Text extraction → Chunking → 
        Embeddings → Milvus vector DB
-    # 2. QUERY (sync): Question → Embedding → Vector search → Context retrieval → 
-    #    LLM → Answer [COMMENTED OUT - Using async only]
-    2. QUERY (async stream): Question → RabbitMQ → Worker → RAG → Redis Pub/Sub → WebSocket
+    2. QUERY (sync): Question → Embedding → Vector search → Context retrieval → 
+       LLM → Answer
+    3. QUERY (stream): Question → RabbitMQ → Worker → RAG → Redis Pub/Sub → WebSocket
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import shutil
 import os
-from .pipeline import ingest_pdf  # , ask_question  # Commented out - Using async streaming only
+from .pipeline import ingest_pdf, ask_question
 from .minio_client import upload_pdf_to_minio
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -144,51 +144,47 @@ async def upload_pdf(file: UploadFile = File(...)):
             os.remove(temp_path)
             logger.debug("Cleaned up temp file")
 
-# ============================================================================
-# SYNCHRONOUS RAG ENDPOINT - COMMENTED OUT
-# Using async streaming endpoint (/rag/ask-stream) only for better UX
-# ============================================================================
-# @router.post("/ask")
-# def ask(query: str, session_id: str | None = None, db: Session = Depends(get_db)):
-#     """
-#     Answer question using RAG system (SYNCHRONOUS - returns complete answer).
-#     
-#     WHY: Provide answers from uploaded documents
-#     WHERE: Called from frontend when user asks question (legacy endpoint)
-#     HOW:
-#         1. Query RAG pipeline (retrieves and generates answer)
-#         2. Optionally save answer to chat history
-#     
-#     Args:
-#         query: User's question
-#         session_id: Optional chat session ID for history tracking
-#         
-#     Returns:
-#         {"answer": "Generated answer text"}
-#         
-#     NOTE: For streaming responses, use /rag/ask-stream instead
-#     """
-#     logger.info(f"RAG query received: '{query}'")
-#     answer = ask_question(query)
-#     
-#     # Save to chat history if session_id provided
-#     if session_id:
-#         try:
-#             session_uuid = uuid.UUID(session_id)
-#             db.add(ChatMessage(
-#                 id=uuid.uuid4(),
-#                 session_id=session_uuid,
-#                 sender="bot",
-#                 message_text=answer,
-#                 node_id=None
-#             ))
-#             db.commit()
-#             logger.debug(f"Saved RAG answer to session {session_id}")
-#         except Exception as e:
-#             logger.warning(f"Failed to save RAG answer to history: {e}")
-#     
-#     logger.info("RAG answer generated successfully")
-#     return {"answer": answer}
+@router.post("/ask")
+def ask(query: str, session_id: str | None = None, db: Session = Depends(get_db)):
+    """
+    Answer question using RAG system (SYNCHRONOUS - returns complete answer).
+    
+    WHY: Provide answers from uploaded documents
+    WHERE: Called from frontend when user asks question (legacy endpoint)
+    HOW:
+        1. Query RAG pipeline (retrieves and generates answer)
+        2. Optionally save answer to chat history
+    
+    Args:
+        query: User's question
+        session_id: Optional chat session ID for history tracking
+        
+    Returns:
+        {"answer": "Generated answer text"}
+        
+    NOTE: For streaming responses, use /rag/ask-stream instead
+    """
+    logger.info(f"RAG query received: '{query}'")
+    answer = ask_question(query)
+    
+    # Save to chat history if session_id provided
+    if session_id:
+        try:
+            session_uuid = uuid.UUID(session_id)
+            db.add(ChatMessage(
+                id=uuid.uuid4(),
+                session_id=session_uuid,
+                sender="bot",
+                message_text=answer,
+                node_id=None
+            ))
+            db.commit()
+            logger.debug(f"Saved RAG answer to session {session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to save RAG answer to history: {e}")
+    
+    logger.info("RAG answer generated successfully")
+    return {"answer": answer}
 
 
 # Request schema for streaming endpoint

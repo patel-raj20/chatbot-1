@@ -19,7 +19,7 @@ export const ENDPOINTS = {
   ADMIN_FAQS: '/admin/faqs',
   
   // RAG
-  // RAG_ASK: '/rag/ask',  // Commented out - Using async streaming only
+  RAG_ASK: '/rag/ask',
   RAG_ASK_STREAM: '/rag/ask-stream',
   RAG_UPLOAD: '/rag/upload-pdf',
   RAG_DOCUMENTS: '/rag/documents',
