@@ -38,7 +38,7 @@ export function useChat(user) {
       .then(docs => {
         const hasDoc = docs && docs.length > 0;
         setHasDocument(hasDoc);
-        console.log("Document status:", hasDoc ? `${docs.length} document(s) available` : "No documents");
+        //console.log("Document status:", hasDoc ? `${docs.length} document(s) available` : "No documents");
       })
       .catch(err => {
         console.warn("Failed to check document status:", err);

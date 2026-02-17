@@ -86,6 +86,9 @@ export default function LoginPage() {
         role: data.role
       });
 
+      // Wait for localStorage to write before redirect
+      await new Promise(resolve => setTimeout(resolve, 200));
+
       // Redirect based on role
       if (data.role === 'ADMIN') {
         router.push('/admin');

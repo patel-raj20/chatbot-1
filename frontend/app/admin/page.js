@@ -51,8 +51,10 @@ export default function AdminPanel() {
   const historyHook = useAdminHistory();
   const ragHook = useAdminRAG();
 
-  // Fetch data when tab changes
+  // Fetch data when tab changes (only after auth is complete)
   useEffect(() => {
+    if (loading || !user) return; // Wait for auth check to complete AND user to be available
+    
     if (activeTab === "flow") {
       flowHook.fetchNodes();
     } else if (activeTab === "faq") {
@@ -60,7 +62,7 @@ export default function AdminPanel() {
     } else if (activeTab === "history") {
       historyHook.fetchSessions();
     }
-  }, [activeTab]);
+  }, [activeTab, loading, user]); // Add user as dependency
 
   // Show loading while auth check is in progress
   if (loading) {

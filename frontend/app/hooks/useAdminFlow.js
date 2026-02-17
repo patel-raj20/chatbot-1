@@ -6,7 +6,8 @@
 
 import { useState, useCallback } from 'react';
 import { useNodesState, useEdgesState, MarkerType } from 'reactflow';
-import { API_BASE_URL } from '../constants/api';
+import { API_BASE_URL, getAuthHeaders } from '../lib/api';
+import { getToken } from '../lib/auth';
 
 export function useAdminFlow() {
   const [backendNodes, setBackendNodes] = useState([]);
@@ -24,13 +25,37 @@ export function useAdminFlow() {
   });
 
   const fetchNodes = async () => {
+    // Verify token exists before making request
+    const token = getToken();
+    if (!token) {
+      console.error('No authentication token found');
+      setBackendNodes([]);
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+    
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/nodes`);
+      const res = await fetch(`${API_BASE_URL}/admin/nodes`, {
+        headers: getAuthHeaders()
+      });
+      
+      if (!res.ok) {
+        console.error(`Failed to fetch nodes: ${res.status} ${res.statusText}`);
+        setBackendNodes([]);
+        setNodes([]);
+        setEdges([]);
+        return;
+      }
+      
       const data = await res.json();
-      setBackendNodes(data);
-      convertToFlowNodes(data);
+      setBackendNodes(Array.isArray(data) ? data : []);
+      convertToFlowNodes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch nodes:", err);
+      setBackendNodes([]);
+      setNodes([]);
+      setEdges([]);
     }
   };
 
@@ -95,7 +120,7 @@ export function useAdminFlow() {
       try {
         await fetch(`${API_BASE_URL}/admin/edges`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             from_node_id: params.source,
             to_node_id: params.target,
@@ -115,7 +140,7 @@ export function useAdminFlow() {
       try {
         await fetch(`${API_BASE_URL}/admin/nodes/${node.id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             position_x: node.position.x,
             position_y: node.position.y,
@@ -132,7 +157,7 @@ export function useAdminFlow() {
     try {
       await fetch(`${API_BASE_URL}/admin/nodes`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(nodeForm)
       });
       setNodeForm({ message_text: "", trigger_text: "", is_entry: false, position_x: 250, position_y: 100 });
@@ -147,7 +172,7 @@ export function useAdminFlow() {
     try {
       await fetch(`${API_BASE_URL}/admin/nodes/${nodeId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(nodeForm)
       });
       setNodeForm({ message_text: "", trigger_text: "", is_entry: false, position_x: 250, position_y: 100 });
@@ -163,7 +188,8 @@ export function useAdminFlow() {
     
     try {
       await fetch(`${API_BASE_URL}/admin/nodes/${nodeId}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getAuthHeaders()
       });
       fetchNodes();
     } catch (err) {
@@ -176,7 +202,8 @@ export function useAdminFlow() {
     
     try {
       await fetch(`${API_BASE_URL}/admin/edges/${edgeId}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getAuthHeaders()
       });
       fetchNodes();
     } catch (err) {

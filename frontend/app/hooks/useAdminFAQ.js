@@ -5,7 +5,8 @@
  */
 
 import { useState } from 'react';
-import { API_BASE_URL } from '../constants/api';
+import { API_BASE_URL, getAuthHeaders } from '../lib/api';
+import { getToken } from '../lib/auth';
 
 export function useAdminFAQ() {
   const [faqs, setFaqs] = useState([]);
@@ -19,12 +20,30 @@ export function useAdminFAQ() {
   });
 
   const fetchFaqs = async () => {
+    // Verify token exists before making request
+    const token = getToken();
+    if (!token) {
+      console.error('No authentication token found');
+      setFaqs([]);
+      return;
+    }
+    
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/faqs`);
+      const res = await fetch(`${API_BASE_URL}/admin/faqs`, {
+        headers: getAuthHeaders()
+      });
+      
+      if (!res.ok) {
+        console.error(`Failed to fetch FAQs: ${res.status} ${res.statusText}`);
+        setFaqs([]);
+        return;
+      }
+      
       const data = await res.json();
-      setFaqs(data);
+      setFaqs(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to fetch FAQs:", err);
+      setFaqs([]);
     }
   };
 
@@ -32,7 +51,7 @@ export function useAdminFAQ() {
     try {
       await fetch(`${API_BASE_URL}/admin/faqs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(faqForm)
       });
       setFaqForm({ question: "", answer: "", order: "0", is_active: true });
@@ -47,7 +66,7 @@ export function useAdminFAQ() {
     try {
       await fetch(`${API_BASE_URL}/admin/faqs/${faqId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(faqForm)
       });
       setFaqForm({ question: "", answer: "", order: "0", is_active: true });
@@ -63,7 +82,8 @@ export function useAdminFAQ() {
     
     try {
       await fetch(`${API_BASE_URL}/admin/faqs/${faqId}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getAuthHeaders()
       });
       fetchFaqs();
     } catch (err) {

@@ -46,7 +46,6 @@ export default function ChatTestUI() {
     setInput,
     currentNodeId,
     faqs,
-    hasDocument,
     isTyping,
     listRef,
     sendMessage
@@ -84,7 +83,6 @@ export default function ChatTestUI() {
         {/* Header */}
         <Header
           user={user}
-          hasDocument={hasDocument}
           onAdminClick={() => router.push('/admin')}
           onLogout={handleLogout}
           showAdminButton={true}

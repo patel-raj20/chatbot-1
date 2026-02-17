@@ -43,14 +43,14 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
     Process a chat message and return bot response.
     
     HOW IT WORKS:
-        1. Check Redis cache for answer (if new question, not node navigation)
-        2. If cache HIT: Return cached answer immediately
+        1. Check Redis cache for FAQ answer (if new question, not node navigation)
+        2. If cache HIT: Return cached FAQ answer immediately
         3. If cache MISS: Save user's message to database
         4. Determine which node to use:
            a) If current_node_id provided: Follow edge based on user's option
            b) If no current_node: Find entry node or FAQ
         5. Generate response with options (if node has outgoing edges)
-        6. Cache the response (for future requests)
+        6. Cache ONLY FAQ responses (workflow and RAG are NOT cached)
         7. Save bot's response to database
     
     Args:
@@ -68,7 +68,7 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
     
     logger.info(f"Chat message received: session={payload.session_id}, message='{payload.message}'")
     
-    # ========== STEP 0: CHECK CACHE (only for new questions, not node navigation) ==========
+    # ========== STEP 0: CHECK CACHE (only for FAQs, not workflows or RAG) ==========
     if payload.current_node_id is None:
         try:
             # Import cache service from main app
@@ -180,24 +180,16 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
                 #     db=db
                 # )
                 
-                # Cache default response to avoid repeated processing
-                default_response_obj = ChatResponse(reply=default_response)
-                try:
-                    from app.main import cache_service
-                    await cache_service.cache_answer(payload.message, default_response_obj.json())
-                    logger.debug(f"Default response cached for question: '{payload.message}'")
-                except Exception as e:
-                    logger.warning(f"Failed to cache default response: {e}")
-                
-                logger.info("No match found - returning default response")
-                return default_response_obj
+                # DO NOT CACHE - this is a RAG fallback message
+                logger.info("No match found - returning default response (not cached - RAG fallback)")
+                return ChatResponse(reply=default_response)
     
     
     else:
         # User is continuing a conversation by selecting an option
         logger.debug(f"Following edge from node {payload.current_node_id}")
         
-        # Save user's message for option selection (before cache check to avoid duplicate)
+        # Save user's message for option selection
         save_chat_message(
             session_id=payload.session_id,
             sender="user",
@@ -205,44 +197,7 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
             db=db
         )
         
-        # ========== CHECK OPTION CACHE ==========
-        try:
-            from app.main import cache_service
-            
-            cached_option_response, cache_retrieval_time = await cache_service.get_cached_option_response(
-                str(payload.current_node_id),
-                payload.message
-            )
-            
-            if cached_option_response:
-                # Option cache HIT - return cached response immediately
-                total_time = (time.time() - request_start_time) * 1000
-                logger.info(
-                    f"✓ OPTION CACHE HIT | Node: {payload.current_node_id} | Option: '{payload.message}' | "
-                    f"Cache: {cache_retrieval_time:.2f}ms | Total: {total_time:.2f}ms"
-                )
-                
-                # Parse cached response
-                response_dict = json.loads(cached_option_response)
-                cached_reply = response_dict.get("reply", "")
-                
-                # Save bot message to history
-                save_chat_message(
-                    session_id=payload.session_id,
-                    sender="bot",
-                    message_text=cached_reply,
-                    db=db,
-                    node_id=response_dict.get("node_id")
-                )
-                
-                # Return cached response
-                return ChatResponse(**response_dict)
-                
-        except Exception as e:
-            # Cache error should not break the chat
-            logger.warning(f"Option cache retrieval error (will proceed normally): {e}")
-        
-        # ========== FOLLOW EDGE (Cache MISS) ==========
+        # Follow edge to next node
         node = follow_edge_to_next_node(
             from_node_id=payload.current_node_id,
             option_text=payload.message,
@@ -306,41 +261,22 @@ async def send_chat_message(payload: ChatRequest, db: Session = Depends(get_db))
             ]
         )
     
-    # ========== STEP 5: CACHE THE RESPONSE ==========
-    try:
-        from app.main import cache_service
-        
-        # Serialize response to JSON for caching
-        response_json = response.json()
-        
-        if payload.current_node_id is None:
-            # Cache new question response
-            await cache_service.cache_answer(payload.message, response_json)
-        else:
-            # Cache option selection response
-            await cache_service.cache_option_response(
-                str(payload.current_node_id),
-                payload.message,
-                response_json
-            )
-            
-    except Exception as e:
-        # Cache storage error should not break the chat
-        logger.warning(f"Failed to cache response: {e}")
+    # ========== STEP 5: DO NOT CACHE WORKFLOW RESPONSES ==========
+    # Workflow tree navigation is NOT cached (only FAQs are cached)
     
     # ========== STEP 6: LOG RESPONSE TIME ==========
     total_time = (time.time() - request_start_time) * 1000
     
     if payload.current_node_id is None:
-        # Question-based request
+        # Workflow entry node (not cached - only FAQs are cached)
         logger.info(
-            f"✗ QUESTION CACHE MISS | Question: '{payload.message[:50]}...' | "
+            f"Workflow entry node | Question: '{payload.message[:50]}...' | "
             f"DB retrieval: {total_time:.2f}ms"
         )
     else:
-        # Option-based request
+        # Workflow option-based request (no caching)
         logger.info(
-            f"✗ OPTION CACHE MISS | Node: {payload.current_node_id} | Option: '{payload.message}' | "
+            f"Workflow option selected | Node: {payload.current_node_id} | Option: '{payload.message}' | "
             f"DB retrieval: {total_time:.2f}ms"
         )
     
