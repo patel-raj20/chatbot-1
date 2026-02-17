@@ -21,12 +21,12 @@ RAG FLOW:
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 import shutil
 import os
 from .pipeline import ingest_pdf, ask_question
-from .minio_client import upload_pdf_to_minio
+from .minio_client import upload_pdf_to_minio, delete_pdf_from_minio, get_pdf_from_minio
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import ChatMessage, PDFDocument
@@ -384,13 +384,14 @@ def list_documents(db: Session = Depends(get_db)):
 @router.delete("/documents/{document_id}")
 def delete_document(document_id: str, db: Session = Depends(get_db)):
     """
-    Delete a specific PDF document and its vectors.
+    Delete a specific PDF document and its vectors from all storage systems.
     
-    WHY: Remove unwanted documents from system
+    WHY: Remove unwanted documents from system completely
     WHERE: Called by admin panel
     HOW:
-        1. Remove vectors from Milvus (by source_file filter)
-        2. Delete metadata from database
+        1. Remove PDF from MinIO storage
+        2. Remove vectors from Milvus (by source_file filter)
+        3. Delete metadata from database
     
     Args:
         document_id: UUID of document to delete
@@ -406,12 +407,24 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
             logger.warning(f"Document not found: {document_id}")
             raise HTTPException(status_code=404, detail="Document not found")
         
+        # Delete from MinIO first (most likely to fail)
+        try:
+            delete_pdf_from_minio(doc.minio_object_name)
+            logger.info(f"Deleted PDF from MinIO: {doc.minio_object_name}")
+        except Exception as e:
+            logger.error(f"Failed to delete from MinIO: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete file from storage: {str(e)}")
+        
         # Delete vectors from Milvus
-        col = get_collection()
-        expr = f'source_file == "{doc.minio_object_name}"'
-        col.delete(expr)
-        col.flush()
-        logger.info(f"Removed vectors for {doc.minio_object_name}")
+        try:
+            col = get_collection()
+            expr = f'source_file == "{doc.minio_object_name}"'
+            col.delete(expr)
+            col.flush()
+            logger.info(f"Removed vectors for {doc.minio_object_name}")
+        except Exception as e:
+            logger.error(f"Failed to delete from Milvus: {e}")
+            # Continue with database deletion even if Milvus fails
         
         # Delete from database
         db.delete(doc)
@@ -428,3 +441,52 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
         logger.error(f"Document deletion failed: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
+
+
+@router.get("/documents/{document_id}/download")
+def download_document(document_id: str, db: Session = Depends(get_db)):
+    """
+    Download a specific PDF document from MinIO.
+    
+    WHY: Allow admins to download uploaded documents
+    WHERE: Called by admin panel
+    HOW:
+        1. Retrieve document metadata from database
+        2. Fetch file from MinIO
+        3. Stream to client with original filename
+    
+    Args:
+        document_id: UUID of document to download
+        
+    Returns:
+        Streaming file response
+    """
+    logger.info(f"Document download requested: {document_id}")
+    try:
+        # Get document from database
+        doc = db.query(PDFDocument).filter(PDFDocument.id == uuid.UUID(document_id)).first()
+        if not doc:
+            logger.warning(f"Document not found: {document_id}")
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Get file from MinIO
+        try:
+            file_data = get_pdf_from_minio(doc.minio_object_name)
+            logger.info(f"Streaming download: {doc.original_filename}")
+            
+            return StreamingResponse(
+                file_data,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{doc.original_filename}"'
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to retrieve from MinIO: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document download failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")

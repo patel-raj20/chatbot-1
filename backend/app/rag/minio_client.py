@@ -147,3 +147,65 @@ def upload_pdf_to_minio(file_path: str, original_filename: str) -> str:
     except S3Error as e:
         logger.error(f"MinIO upload failed: {e}")
         raise
+
+
+def delete_pdf_from_minio(object_name: str) -> bool:
+    """
+    Delete PDF from MinIO object storage.
+    
+    WHY: Remove files when admin deletes documents
+    WHERE: Called by /rag/documents/{doc_id} delete endpoint
+    HOW: Uses MinIO remove_object to delete file
+    
+    Args:
+        object_name: MinIO object name (UUID.pdf)
+    
+    Returns:
+        True if successful
+        
+    Raises:
+        Exception: If deletion fails
+    """
+    client = get_minio_client()
+    
+    logger.info(f"Deleting PDF from MinIO: {object_name}")
+    
+    try:
+        client.remove_object(MINIO_BUCKET_NAME, object_name)
+        logger.info(f"Successfully deleted from MinIO: {object_name}")
+        return True
+        
+    except S3Error as e:
+        logger.error(f"MinIO deletion failed: {e}")
+        raise Exception(f"Failed to delete from MinIO: {str(e)}")
+
+
+def get_pdf_from_minio(object_name: str):
+    """
+    Retrieve PDF from MinIO object storage.
+    
+    WHY: Enable document download functionality
+    WHERE: Called by /rag/documents/{doc_id}/download endpoint
+    HOW: Returns file stream from MinIO
+    
+    Args:
+        object_name: MinIO object name (UUID.pdf)
+    
+    Returns:
+        File response object
+        
+    Raises:
+        Exception: If retrieval fails
+    """
+    client = get_minio_client()
+    
+    logger.info(f"Retrieving PDF from MinIO: {object_name}")
+    
+    try:
+        response = client.get_object(MINIO_BUCKET_NAME, object_name)
+        logger.info(f"Successfully retrieved from MinIO: {object_name}")
+        return response
+        
+    except S3Error as e:
+        logger.error(f"MinIO retrieval failed: {e}")
+        raise Exception(f"Failed to retrieve from MinIO: {str(e)}")

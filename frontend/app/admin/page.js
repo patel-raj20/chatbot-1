@@ -130,6 +130,12 @@ export default function AdminPanel() {
           uploadStatus={ragHook.uploadStatus}
           isUploading={ragHook.isUploading}
           handleFileUpload={ragHook.handleFileUpload}
+          documents={ragHook.documents}
+          loadingDocs={ragHook.loadingDocs}
+          deleteConfirm={ragHook.deleteConfirm}
+          setDeleteConfirm={ragHook.setDeleteConfirm}
+          handleDelete={ragHook.handleDelete}
+          handleDownload={ragHook.handleDownload}
         />
       )}
 
