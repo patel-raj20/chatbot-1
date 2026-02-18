@@ -33,7 +33,8 @@ import Header from "../components/common/Header";
 import ChatMessage from "../components/chat/ChatMessage";
 import TypingIndicator from "../components/chat/TypingIndicator";
 import EmptyChatState from "../components/chat/EmptyChatState";
-import FAQSection from "../components/chat/FAQSection";
+import WorkflowQuestionsSection from "../components/chat/WorkflowQuestionsSection";
+import FAQSuggestionsDropdown from "../components/chat/FAQSuggestionsDropdown";
 import ChatInput from "../components/chat/ChatInput";
 
 export default function ChatTestUI() {
@@ -45,7 +46,11 @@ export default function ChatTestUI() {
     input,
     setInput,
     currentNodeId,
-    faqs,
+    workflowQuestions,
+    faqSearchQuery,
+    setFaqSearchQuery,
+    faqSuggestions,
+    isSearchingFaqs,
     isTyping,
     listRef,
     sendMessage
@@ -65,6 +70,7 @@ export default function ChatTestUI() {
     if (input.trim()) {
       sendMessage(input);
       setInput("");
+      setFaqSearchQuery(""); // Clear search when message is sent
     }
   };
 
@@ -72,8 +78,14 @@ export default function ChatTestUI() {
     sendMessage(optionText, true, nodeId || currentNodeId);
   };
 
-  const handleFaqClick = (question) => {
+  const handleWorkflowClick = (triggerText) => {
+    sendMessage(triggerText, false, null, false);
+  };
+
+  const handleFaqSuggestionClick = (question) => {
     sendMessage(question, false, null, true);
+    setInput("");
+    setFaqSearchQuery("");
   };
 
   return (
@@ -93,6 +105,13 @@ export default function ChatTestUI() {
           ref={listRef}
           className={`flex-1 overflow-y-auto px-8 py-6 space-y-6 ${GRADIENTS.messagesBg}`}
         >
+          {/* Workflow Questions Section */}
+          <WorkflowQuestionsSection 
+            workflowQuestions={workflowQuestions}
+            onQuestionClick={handleWorkflowClick}
+            isDisabled={isTyping}
+          />
+
           {messages.length === 0 && <EmptyChatState />}
 
           {messages.map((message, index) => (
@@ -106,16 +125,22 @@ export default function ChatTestUI() {
           {isTyping && <TypingIndicator />}
         </div>
 
-        {/* FAQ Section */}
-        <FAQSection faqs={faqs} onFaqClick={handleFaqClick} />
-
-        {/* Input Area */}
-        <ChatInput
-          input={input}
-          setInput={setInput}
-          onSend={handleSendMessage}
-          disabled={!sessionId}
-        />
+        {/* Input Area with FAQ Dropdown */}
+        <div className="relative">
+          <FAQSuggestionsDropdown
+            suggestions={faqSuggestions}
+            onSuggestionClick={handleFaqSuggestionClick}
+            isLoading={isSearchingFaqs}
+            isVisible={faqSearchQuery.length >= 2}
+          />
+          <ChatInput
+            input={input}
+            setInput={setInput}
+            onSend={handleSendMessage}
+            disabled={!sessionId}
+            onSearchQueryChange={setFaqSearchQuery}
+          />
+        </div>
       </div>
 
       <style jsx global>{KEYFRAMES}</style>

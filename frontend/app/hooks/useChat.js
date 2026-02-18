@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { sendChatMessage, askRAGQuestionStreaming, fetchFAQs, API_BASE_URL, getAuthHeaders } from '../lib/api';
+import { sendChatMessage, askRAGQuestionStreaming, fetchWorkflowQuestions, searchFAQs, API_BASE_URL, getAuthHeaders } from '../lib/api';
 import { generateUUID } from '../lib/utils';
 
 export function useChat(user) {
@@ -13,22 +13,29 @@ export function useChat(user) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [currentNodeId, setCurrentNodeId] = useState(null);
-  const [faqs, setFaqs] = useState([]);
+  const [workflowQuestions, setWorkflowQuestions] = useState([]);
+  const [faqSearchQuery, setFaqSearchQuery] = useState("");
+  const [faqSuggestions, setFaqSuggestions] = useState([]);
+  const [isSearchingFaqs, setIsSearchingFaqs] = useState(false);
   const [hasDocument, setHasDocument] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
   const listRef = useRef(null);
 
-  // Initialize session and load FAQs
+  // Initialize session and load workflow questions
   useEffect(() => {
     const id = generateUUID();
     setSessionId(id);
 
-    // Load FAQs
-    fetchFAQs()
-      .then(data => setFaqs(data))
-      .catch(err => console.warn("Failed to load FAQs:", err));
+    // Load workflow questions
+    console.log("Fetching workflow questions...");
+    fetchWorkflowQuestions()
+      .then(data => {
+        console.log("Workflow questions received:", data);
+        setWorkflowQuestions(data);
+      })
+      .catch(err => console.warn("Failed to load workflow questions:", err));
 
     // Check document status
     fetch(`${API_BASE_URL}/rag/documents`, {
@@ -45,6 +52,30 @@ export function useChat(user) {
         setHasDocument(false);
       });
   }, []);
+
+  // Debounced FAQ search
+  useEffect(() => {
+    if (faqSearchQuery.length < 2) {
+      setFaqSuggestions([]);
+      return;
+    }
+
+    setIsSearchingFaqs(true);
+    const timeoutId = setTimeout(() => {
+      searchFAQs(faqSearchQuery)
+        .then(results => {
+          setFaqSuggestions(results);
+          setIsSearchingFaqs(false);
+        })
+        .catch(err => {
+          console.warn("FAQ search failed:", err);
+          setFaqSuggestions([]);
+          setIsSearchingFaqs(false);
+        });
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [faqSearchQuery]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -192,7 +223,11 @@ export function useChat(user) {
     input,
     setInput,
     currentNodeId,
-    faqs,
+    workflowQuestions,
+    faqSearchQuery,
+    setFaqSearchQuery,
+    faqSuggestions,
+    isSearchingFaqs,
     hasDocument,
     isTyping,
     isStreaming,

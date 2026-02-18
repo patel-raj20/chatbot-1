@@ -9,7 +9,8 @@ export default function ChatInput({
   setInput, 
   onSend, 
   disabled = false,
-  placeholder = "Type your message..." 
+  placeholder = "Type your message...",
+  onSearchQueryChange = null
 }) {
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -20,13 +21,21 @@ export default function ChatInput({
     }
   };
 
+  const handleChange = (e) => {
+    const value = e.target.value;
+    setInput(value);
+    if (onSearchQueryChange) {
+      onSearchQueryChange(value);
+    }
+  };
+
   return (
     <div className="relative bg-white border-t border-purple-100 px-6 py-5 shadow-2xl">
       <div className="flex gap-3 items-center">
         <div className="flex-1 relative">
           <input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleChange}
             onKeyDown={handleKeyDown}
             className="w-full bg-gradient-to-r from-purple-50 to-violet-50 border-2 border-purple-200 rounded-full px-6 py-4 text-base text-gray-800 placeholder-purple-400 focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-200 transition-all shadow-inner"
             placeholder={disabled ? "Loading..." : placeholder}

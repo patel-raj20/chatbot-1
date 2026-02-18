@@ -23,6 +23,11 @@ class FAQResponse(BaseModel):
     order: str
     is_active: bool
 
+class WorkflowQuestionResponse(BaseModel):
+    id: UUID
+    trigger_text: str
+    message_text: str
+
 class FAQCreate(BaseModel):
     question: str
     answer: str

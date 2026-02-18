@@ -41,6 +41,17 @@ def get_active_faqs(db: Session) -> List[FAQ]:
     return faqs
 
 
+def search_faqs(query: str, db: Session, limit: int = 8) -> List[FAQ]:
+    """Search FAQs by question text for dynamic suggestions."""
+    faqs = db.query(FAQ).filter(
+        FAQ.question.ilike(f"%{query}%"),
+        FAQ.is_active == True
+    ).limit(limit).all()
+    
+    logger.debug(f"Found {len(faqs)} FAQs matching query: {query}")
+    return faqs
+
+
 def get_all_faqs(db: Session) -> List[FAQ]:
     """
     Retrieve all FAQs including inactive ones (admin view).
