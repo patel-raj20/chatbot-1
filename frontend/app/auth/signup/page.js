@@ -116,7 +116,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#F5F7FA] px-4">
       <AuthForm
         formData={formData}
         onChange={handleChange}
@@ -128,9 +128,9 @@ export default function SignupPage() {
       />
       {/* Login Link */}
       <div className="absolute bottom-8 text-center">
-        <p className="text-gray-600">
+        <p className="text-[#6B7280]">
           Already have an account?{' '}
-          <Link href="/auth/login" className="text-purple-600 hover:text-purple-500 font-medium">
+          <Link href="/auth/login" className="text-[#4F6BED] hover:text-[#3D56D9] font-medium">
             Sign in
           </Link>
         </p>

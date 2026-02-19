@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 # Configuration - WORD-BASED (not character-based)
 CHUNK_SIZE_WORDS = 300        # Target words per chunk
 CHUNK_OVERLAP_WORDS = 75     # Overlap words for context preservation
-MIN_CHUNK_SIZE_WORDS = 50     # Minimum words to keep a chunk
+MIN_CHUNK_SIZE_WORDS = 0     # Minimum words to keep a chunk
 
 
 def chunk_text(text: str) -> list[str]:

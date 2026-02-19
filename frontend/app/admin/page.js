@@ -75,7 +75,7 @@ export default function AdminPanel() {
   };
 
   return (
-    <div className={`flex flex-col h-screen ${GRADIENTS.admin}`}>
+    <div className="flex flex-col h-screen bg-[#F5F7FA]">
       {/* Header with Tabs */}
       <AdminHeader
         user={user}
@@ -84,7 +84,7 @@ export default function AdminPanel() {
       />
 
       {/* Tabs Navigation */}
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 pt-4 bg-[#F5F7FA]">
         <AdminTabs activeTab={activeTab} setActiveTab={setActiveTab} />
       </div>
 

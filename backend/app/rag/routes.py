@@ -276,9 +276,10 @@ async def ask_stream(
         success = rmq.publish_job(job_data)
         
         if not success:
+            logger.error(f"Failed to queue job {request_id} - RabbitMQ publish failed")
             raise HTTPException(
                 status_code=500,
-                detail="Failed to queue job. RabbitMQ may be unavailable."
+                detail="Failed to queue job. RabbitMQ connection is unavailable. Please try again in a moment."
             )
         
         logger.info(f"✓ Job queued successfully: {request_id}")
@@ -294,10 +295,11 @@ async def ask_stream(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to queue streaming RAG job: {e}")
+        logger.error(f"Failed to queue streaming RAG job: {type(e).__name__}: {e}")
+        logger.exception("Full traceback:")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to queue job: {str(e)}"
+            detail=f"Failed to queue job: {str(e)}. Please check if all services (RabbitMQ, Redis, Worker) are running."
         )
 
 

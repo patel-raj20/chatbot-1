@@ -22,4 +22,4 @@ OCR_MIN_TEXT_LENGTH = 50  # Minimum text length before triggering full-page OCR
 # Chunking Configuration (WORD-BASED)
 CHUNK_SIZE_WORDS = 800        # Target words per chunk (not characters!)
 CHUNK_OVERLAP_WORDS = 100     # Overlap words between chunks
-MIN_CHUNK_SIZE_WORDS = 50     # Minimum words to keep a chunk
+MIN_CHUNK_SIZE_WORDS = 0     # Minimum words to keep a chunk

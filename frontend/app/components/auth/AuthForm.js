@@ -16,13 +16,13 @@ export default function AuthForm({
   isSignup = false 
 }) {
   return (
-    <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-2xl">
+    <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-md border border-[#E5E7EB]">
       {/* Header */}
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-gray-900 mb-2">
+        <h1 className="text-4xl font-bold text-[#1F2937] mb-2">
           {isSignup ? 'Create Account' : 'Welcome Back'}
         </h1>
-        <p className="text-gray-600">
+        <p className="text-[#6B7280]">
           {isSignup ? 'Sign up to get started' : 'Sign in to access your account'}
         </p>
       </div>
@@ -35,7 +35,7 @@ export default function AuthForm({
         <div className="space-y-4">
           {/* Username Field */}
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="username" className="block text-sm font-medium text-[#1F2937] mb-2">
               Username
             </label>
             <input
@@ -45,16 +45,14 @@ export default function AuthForm({
               required
               value={formData.username}
               onChange={onChange}
-              className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 ${
-                isSignup ? 'focus:ring-purple-500 focus:border-purple-500' : 'focus:ring-indigo-500 focus:border-indigo-500'
-              } transition`}
+              className={`w-full px-4 py-3 border border-[#E5E7EB] rounded-xl focus:ring-2 focus:ring-[#4F6BED] focus:border-[#4F6BED] transition-all duration-200 text-[#1F2937]`}
               placeholder={isSignup ? "Choose a username (min 3 characters)" : "Enter your username"}
             />
           </div>
 
           {/* Password Field */}
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-[#1F2937] mb-2">
               Password
             </label>
             <input
@@ -64,9 +62,7 @@ export default function AuthForm({
               required
               value={formData.password}
               onChange={onChange}
-              className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 ${
-                isSignup ? 'focus:ring-purple-500 focus:border-purple-500' : 'focus:ring-indigo-500 focus:border-indigo-500'
-              } transition`}
+              className={`w-full px-4 py-3 border border-[#E5E7EB] rounded-xl focus:ring-2 focus:ring-[#4F6BED] focus:border-[#4F6BED] transition-all duration-200 text-[#1F2937]`}
               placeholder={isSignup ? "Create a password (min 6 characters)" : "Enter your password"}
             />
           </div>
@@ -74,7 +70,7 @@ export default function AuthForm({
           {/* Confirm Password Field (Signup only) */}
           {isSignup && (
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#1F2937] mb-2">
                 Confirm Password
               </label>
               <input
@@ -84,7 +80,7 @@ export default function AuthForm({
                 required
                 value={formData.confirmPassword || ''}
                 onChange={onChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition"
+                className="w-full px-4 py-3 border border-[#E5E7EB] rounded-xl focus:ring-2 focus:ring-[#4F6BED] focus:border-[#4F6BED] transition-all duration-200 text-[#1F2937]"
                 placeholder="Confirm your password"
               />
             </div>
@@ -93,7 +89,7 @@ export default function AuthForm({
 
         {/* Info Box (Signup only) */}
         {isSignup && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
+          <div className="bg-[#EEF2FF] border border-[#4F6BED] text-[#1F2937] px-4 py-3 rounded-xl text-sm">
             <p className="font-medium">📝 Account Info</p>
             <p className="mt-1">All new accounts start with <strong>user</strong> role. Contact admin for role upgrades.</p>
           </div>
@@ -103,9 +99,7 @@ export default function AuthForm({
         <button
           type="submit"
           disabled={loading}
-          className={`w-full ${
-            isSignup ? 'bg-purple-600 hover:bg-purple-700 focus:ring-purple-500' : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
-          } text-white py-3 px-4 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 transition disabled:opacity-50 disabled:cursor-not-allowed`}
+          className="w-full bg-[#4F6BED] hover:bg-[#3D56D9] text-white py-3 px-4 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#4F6BED] focus:ring-offset-2 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
         >
           {loading ? (isSignup ? 'Creating account...' : 'Signing in...') : (isSignup ? 'Sign Up' : 'Sign In')}
         </button>

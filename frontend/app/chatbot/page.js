@@ -90,7 +90,7 @@ export default function ChatTestUI() {
 
   return (
     <div className={`min-h-screen ${GRADIENTS.primary} flex items-center justify-center p-6`}>
-      <div className="w-full max-w-6xl h-[95vh] flex flex-col rounded-3xl overflow-hidden shadow-2xl bg-white mx-auto">
+      <div className="w-full max-w-6xl h-[95vh] flex flex-col rounded-xl overflow-hidden shadow-xl bg-white mx-auto border border-[#E5E7EB]">
 
         {/* Header */}
         <Header

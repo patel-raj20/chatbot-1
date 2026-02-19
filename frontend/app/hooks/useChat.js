@@ -29,12 +29,8 @@ export function useChat(user) {
     setSessionId(id);
 
     // Load workflow questions
-    console.log("Fetching workflow questions...");
     fetchWorkflowQuestions()
-      .then(data => {
-        console.log("Workflow questions received:", data);
-        setWorkflowQuestions(data);
-      })
+      .then(data => setWorkflowQuestions(data))
       .catch(err => console.warn("Failed to load workflow questions:", err));
 
     // Check document status

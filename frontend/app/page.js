@@ -29,8 +29,8 @@ export default function LandingPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700">
-      <div className="text-white text-xl">Redirecting...</div>
+    <div className="min-h-screen flex items-center justify-center bg-[#F5F7FA]">
+      <div className="text-[#1F2937] text-xl">Redirecting...</div>
     </div>
   );
 }

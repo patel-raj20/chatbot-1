@@ -18,10 +18,10 @@ export default function AdminTabs({ activeTab, setActiveTab }) {
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
-          className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+          className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
             activeTab === tab.id
-              ? "bg-purple-600 text-white shadow-lg"
-              : "bg-white/10 text-purple-200 hover:bg-white/20"
+              ? "bg-[#4F6BED] text-white shadow-lg"
+              : "bg-white text-[#1F2937] hover:bg-[#F5F7FA] border border-[#E5E7EB] shadow-md"
           }`}
         >
           {tab.icon} {tab.label}

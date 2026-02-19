@@ -37,11 +37,11 @@ export default function FlowTab({
 }) {
   return (
     <div className="flex flex-1 overflow-hidden">
-      <div className="w-96 bg-slate-900/50 backdrop-blur-lg border-r border-white/10 overflow-y-auto">
+      <div className="w-96 bg-white border-r border-[#E5E7EB] overflow-y-auto">
         <div className="p-6">
           <button
             onClick={handleAddNode}
-            className="w-full px-6 py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-lg font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all"
+            className="w-full px-6 py-3 bg-[#4F6BED] hover:bg-[#3D56D9] text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all duration-200"
           >
             + Add New Node
           </button>
@@ -56,18 +56,18 @@ export default function FlowTab({
             />
           )}
 
-          <div className="mt-6 bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20">
-            <h3 className="text-lg font-bold text-white mb-4">Connections ({backendEdges.length})</h3>
+          <div className="mt-6 bg-[#F5F7FA] rounded-xl p-4 border border-[#E5E7EB] shadow-md">
+            <h3 className="text-lg font-bold text-[#1F2937] mb-4">Connections ({backendEdges.length})</h3>
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {backendNodes.map(node => (
                 node.outgoing_edges.map(edge => (
-                  <div key={edge.id} className="bg-purple-900/30 px-3 py-2 rounded-lg">
-                    <div className="text-xs text-purple-100 mb-1">
+                  <div key={edge.id} className="bg-white px-3 py-2 rounded-lg border border-[#E5E7EB]">
+                    <div className="text-xs text-[#6B7280] mb-1">
                       {node.message_text.substring(0, 30)}... →
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-purple-300">{edge.option_text || "(auto)"}</span>
-                      <button onClick={() => deleteEdge(edge.id)} className="text-red-400 hover:text-red-300 text-xs">
+                      <span className="text-xs text-[#1F2937]">{edge.option_text || "(auto)"}</span>
+                      <button onClick={() => deleteEdge(edge.id)} className="text-[#E5533D] hover:text-[#CC3F2B] text-xs">
                         Delete
                       </button>
                     </div>
@@ -89,9 +89,9 @@ export default function FlowTab({
           onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
           fitView
-          className="bg-slate-900"
+          className="bg-[#F5F7FA]"
         >
-          <Background color="#8b5cf6" gap={16} />
+          <Background color="#9CA3AF" gap={16} />
           <Controls />
           <MiniMap />
         </ReactFlow>

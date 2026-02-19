@@ -57,6 +57,7 @@ class RabbitMQClient:
         self.connection: Optional[pika.BlockingConnection] = None
         self.channel: Optional[pika.channel.Channel] = None
         self._is_connected = False
+        self._connection_params = None  # Store connection params for reconnection
     
     def connect(self) -> None:
         """
@@ -87,6 +88,9 @@ class RabbitMQClient:
                 heartbeat=600,  # Keep connection alive
                 blocked_connection_timeout=300
             )
+            
+            # Store parameters for reconnection
+            self._connection_params = parameters
             
             # Establish connection
             logger.info(f"Connecting to RabbitMQ at {settings.RABBITMQ_HOST}:{settings.RABBITMQ_PORT}...")
@@ -120,6 +124,104 @@ class RabbitMQClient:
             logger.error(f"Failed to connect to RabbitMQ: {e}")
             raise
     
+    def is_connection_healthy(self) -> bool:
+        """
+        Check if the RabbitMQ connection and channel are actually open.
+        
+        WHY: The connection can become stale after inactivity
+        WHERE: Called before publishing to verify connection health
+        HOW: Checks both connection and channel states
+        
+        Returns:
+            True if connection and channel are open, False otherwise
+        """
+        try:
+            if not self._is_connected:
+                return False
+            
+            # Check if connection exists and is open
+            if not self.connection or not self.connection.is_open:
+                logger.warning("RabbitMQ connection is closed")
+                self._is_connected = False
+                return False
+            
+            # Check if channel exists and is open
+            if not self.channel or not self.channel.is_open:
+                logger.warning("RabbitMQ channel is closed")
+                self._is_connected = False
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking connection health: {e}")
+            self._is_connected = False
+            return False
+    
+    def reconnect(self) -> bool:
+        """
+        Attempt to reconnect to RabbitMQ.
+        
+        WHY: Connection may be closed due to inactivity or network issues
+        WHERE: Called by publish_job when connection is unhealthy
+        HOW: Closes old connection and creates a new one
+        
+        Returns:
+            True if reconnection successful, False otherwise
+        """
+        try:
+            logger.info("Attempting to reconnect to RabbitMQ...")
+            
+            # Close old connection if it exists
+            try:
+                if self.channel:
+                    self.channel.close()
+            except:
+                pass
+            
+            try:
+                if self.connection:
+                    self.connection.close()
+            except:
+                pass
+            
+            self._is_connected = False
+            
+            # Reconnect using stored parameters
+            if self._connection_params:
+                self.connection = pika.BlockingConnection(self._connection_params)
+                self.channel = self.connection.channel()
+                
+                # Re-declare exchange and queue
+                self.channel.exchange_declare(
+                    exchange=self.EXCHANGE_NAME,
+                    exchange_type='direct',
+                    durable=True
+                )
+                
+                self.channel.queue_declare(
+                    queue=self.QUEUE_NAME,
+                    durable=True
+                )
+                
+                self.channel.queue_bind(
+                    exchange=self.EXCHANGE_NAME,
+                    queue=self.QUEUE_NAME,
+                    routing_key=self.ROUTING_KEY
+                )
+                
+                self._is_connected = True
+                logger.info("✓ Successfully reconnected to RabbitMQ")
+                return True
+            else:
+                logger.error("Cannot reconnect: connection parameters not stored")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to reconnect to RabbitMQ: {e}")
+            self._is_connected = False
+            return False
+    
     def publish_job(self, job_data: Dict[str, Any]) -> bool:
         """
         Publish a job to RabbitMQ queue.
@@ -127,9 +229,10 @@ class RabbitMQClient:
         WHY: Offload RAG processing to worker for scalability
         WHERE: Called by HTTP endpoint after generating request_id
         HOW:
-            1. Serialize job data to JSON
-            2. Publish to exchange with routing key
-            3. Message routes to queue, worker picks it up
+            1. Check if connection is healthy (auto-reconnect if not)
+            2. Serialize job data to JSON
+            3. Publish to exchange with routing key
+            4. Message routes to queue, worker picks it up
         
         Args:
             job_data: Dictionary containing request_id, user_id, question, etc.
@@ -145,15 +248,18 @@ class RabbitMQClient:
                 "session_id": "session-uuid"
             })
         """
-        if not self._is_connected:
-            logger.error("Cannot publish: Not connected to RabbitMQ")
-            return False
+        # STEP 1: Check connection health and reconnect if needed
+        if not self.is_connection_healthy():
+            logger.warning("RabbitMQ connection is unhealthy, attempting to reconnect...")
+            if not self.reconnect():
+                logger.error("Cannot publish: Failed to reconnect to RabbitMQ")
+                return False
         
         try:
-            # Serialize to JSON
+            # STEP 2: Serialize to JSON
             message = json.dumps(job_data)
             
-            # Publish with persistence
+            # STEP 3: Publish with persistence
             self.channel.basic_publish(
                 exchange=self.EXCHANGE_NAME,
                 routing_key=self.ROUTING_KEY,
@@ -169,6 +275,8 @@ class RabbitMQClient:
             
         except Exception as e:
             logger.error(f"Failed to publish job: {e}")
+            # Mark connection as unhealthy so next call will attempt reconnection
+            self._is_connected = False
             return False
     
     def consume(self, callback: Callable) -> None:

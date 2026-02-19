@@ -47,7 +47,7 @@ NORMALIZATION: L2 norm (for cosine similarity)
 ```python
 CHUNK_SIZE_WORDS: 800 words per chunk
 CHUNK_OVERLAP_WORDS: 100 words overlap
-MIN_CHUNK_SIZE_WORDS: 50 words minimum
+MIN_CHUNK_SIZE_WORDS: 0 words minimum
 CHUNKING_STRATEGY: Word-based (not character-based)
 ```
 

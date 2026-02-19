@@ -30,14 +30,14 @@ export default function ChatInput({
   };
 
   return (
-    <div className="relative bg-white border-t border-purple-100 px-6 py-5 shadow-2xl">
+    <div className="relative bg-white border-t border-[#E5E7EB] px-6 py-4 shadow-lg">
       <div className="flex gap-3 items-center">
         <div className="flex-1 relative">
           <input
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            className="w-full bg-gradient-to-r from-purple-50 to-violet-50 border-2 border-purple-200 rounded-full px-6 py-4 text-base text-gray-800 placeholder-purple-400 focus:outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-200 transition-all shadow-inner"
+            className="w-full bg-[#F5F7FA] border border-[#E5E7EB] rounded-xl px-5 py-3 text-base text-[#1F2937] placeholder-[#9CA3AF] focus:outline-none focus:border-[#4F6BED] focus:ring-2 focus:ring-[#EEF2FF] transition-all duration-200"
             placeholder={disabled ? "Loading..." : placeholder}
             disabled={disabled}
           />
@@ -45,12 +45,11 @@ export default function ChatInput({
         <button
           onClick={onSend}
           disabled={disabled || !input.trim()}
-          className="relative group bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 text-white p-4 rounded-full font-semibold shadow-xl hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-110 transition-all duration-300 disabled:hover:scale-100"
+          className="bg-[#4F6BED] hover:bg-[#3D56D9] text-white p-3.5 rounded-xl font-semibold shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200"
         >
-          <svg className="w-6 h-6 transform group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
           </svg>
-          <div className="absolute inset-0 rounded-full bg-white opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
         </button>
       </div>
     </div>
