@@ -18,6 +18,8 @@ FLOW:
 
 from typing import Generator
 from .retriever import retrieve
+from .reranker import rerank
+from .config import RETRIEVAL_TOP_K, RERANKER_TOP_N
 from .ollama_client_streaming import generate_answer_streaming
 from app.core.logger import get_logger
 
@@ -46,15 +48,16 @@ def ask_question_streaming(query: str) -> Generator[str, None, None]:
             # Publish each token to Redis Pub/Sub
             pubsub.publish_token(request_id, token)
     """
-    # STEP 1: Retrieve relevant chunks
+    # STEP 1: Retrieve + Rerank
     logger.info(f"Processing RAG query: {query}")
-    chunks = retrieve(query)
+    chunks = retrieve(query, top_k=RETRIEVAL_TOP_K)
     
     if not chunks:
         logger.warning(f"No relevant chunks found for query: '{query}'")
-        # Yield error message as single token
         yield "I couldn't find relevant information in the uploaded documents. Please make sure you've uploaded a document first."
         return
+    
+    chunks = rerank(query, chunks, top_n=RERANKER_TOP_N)
     
     # STEP 2: Combine chunks into context
     context = "\n\n".join(chunks)

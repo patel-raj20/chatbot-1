@@ -71,6 +71,7 @@ def generate_answer_streaming(context: str, query: str) -> Generator[str, None, 
                         "You are a factual assistant. Answer ONLY from the provided context. "
                         "Add your context in answer not just copy it from the document. "
                         "Do NOT repeat the context verbatim. Use complete sentences and proper grammar. "
+                        "Do NOT use markdown formatting such as bold (**), italics, or bullet points. Write in plain text only. "
                         "If the question is not related to the context, respond with: "
                         "'The question is not related to the document.'"
                     )

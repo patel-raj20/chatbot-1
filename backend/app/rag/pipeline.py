@@ -20,6 +20,8 @@ from .chunker import chunk_markdown
 from .embedder import embed
 from .collection import get_collection
 from .retriever import retrieve
+from .reranker import rerank
+from .config import RETRIEVAL_TOP_K, RERANKER_TOP_N
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -128,12 +130,15 @@ def ask_question(query: str) -> str:
         - No chunks found → "No relevant information found"
         - Groq unavailable → Return raw context chunks
     """
-    # STEP 1: Retrieve relevant chunks
-    chunks = retrieve(query)
+    # STEP 1: Retrieve relevant chunks (over-fetch for reranking)
+    chunks = retrieve(query, top_k=RETRIEVAL_TOP_K)
     
     if not chunks:
         logger.warning(f"No relevant chunks found for query: '{query}'")
         return "I couldn't find relevant information in the uploaded documents. Please make sure you've uploaded a document first."
+    
+    # STEP 1b: Rerank to keep the most relevant chunks
+    chunks = rerank(query, chunks, top_n=RERANKER_TOP_N)
     
     # STEP 2: Combine chunks into context
     context = "\n\n".join(chunks)

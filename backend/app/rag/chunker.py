@@ -1,19 +1,19 @@
 """
-Structure-Aware Markdown Chunker
-=================================
-Splits markdown text into chunks based on document structure (sections, paragraphs, tables).
+Topic-Aware Markdown Chunker
+=============================
+Splits markdown into meaningful chunks by merging content within topics.
 
 STRATEGY:
-    - Structure-first chunking: Respects heading boundaries
-    - Paragraph grouping: Combines paragraphs within token limits
-    - Atomic tables: Never splits table rows
-    - Metadata extraction: Tracks chunk type, heading, page numbers
+    - Major headings (level 1-2) define topic boundaries  
+    - Minor headings (level 3-6) merge into current topic
+    - Accumulate content until MAX_CHUNK_TOKENS
+    - Atomic tables preserved as standalone chunks
 
 WHY THIS WORKS:
-    - Preserves document context and hierarchy
-    - Tables remain complete and usable
-    - Each chunk has meaningful boundaries
-    - Better for semantic embeddings and RAG accuracy
+    - Eliminates small single-line chunks
+    - Preserves complete topic context
+    - Better semantic coherence for RAG
+    - Natural topic boundaries for retrieval
 
 WHERE USED: Called by pipeline.py during PDF ingestion
 """
@@ -26,24 +26,23 @@ logger = get_logger(__name__)
 
 # Import configuration
 try:
-    from .config import TARGET_CHUNK_TOKENS, MAX_CHUNK_TOKENS, MIN_CHUNK_TOKENS, ENABLE_TABLE_ATOMIC
+    from .config import TARGET_CHUNK_TOKENS, MAX_CHUNK_TOKENS, ENABLE_TABLE_ATOMIC
 except ImportError:
     TARGET_CHUNK_TOKENS = 500
     MAX_CHUNK_TOKENS = 800
-    MIN_CHUNK_TOKENS = 30  # Reduced from 100 to preserve small but meaningful sections
     ENABLE_TABLE_ATOMIC = True
 
 
 def chunk_markdown(markdown: str, total_pages: int = 1) -> List[Dict[str, Any]]:
     """
-    Structure-aware chunking: Split markdown by document structure.
+    Topic-aware chunking: Merge small chunks within topics.
     
     ALGORITHM:
         1. Parse markdown into elements (headings, paragraphs, tables)
-        2. Start new chunk at each heading
-        3. Accumulate paragraphs until token limit
-        4. Keep tables as standalone chunks
-        5. Extract metadata for each chunk
+        2. Start new chunk only at major headings (level 1-2)
+        3. Merge minor headings and content into current chunk
+        4. Split only when hitting MAX_CHUNK_TOKENS
+        5. Keep tables atomic if configured
     
     Args:
         markdown: Full document in markdown format
@@ -53,11 +52,11 @@ def chunk_markdown(markdown: str, total_pages: int = 1) -> List[Dict[str, Any]]:
         List of dicts with:
             - content: Chunk text in markdown
             - chunk_type: 'paragraph', 'table', or 'mixed'
-            - heading: Last heading before chunk
+            - heading: Last major heading
             - page_start: First page number
             - page_end: Last page number
     """
-    logger.info(f"Starting structure-aware chunking for {len(markdown)} characters")
+    logger.info(f"Starting topic-aware chunking for {len(markdown)} characters")
     
     # Parse markdown into structured elements
     elements = _parse_markdown_elements(markdown)
@@ -83,7 +82,7 @@ def chunk_markdown(markdown: str, total_pages: int = 1) -> List[Dict[str, Any]]:
             'page_end': total_pages
         }]
     
-    logger.info(f"Created {len(chunks)} structure-aware chunks")
+    logger.info(f"Created {len(chunks)} topic-aware chunks")
     
     # Log statistics
     if chunks:
@@ -338,13 +337,13 @@ def _parse_markdown_elements(markdown: str) -> List[Dict[str, Any]]:
 
 def _create_chunks_from_elements(elements: List[Dict[str, Any]], total_pages: int) -> List[Dict[str, Any]]:
     """
-    Create chunks from parsed elements following structure-aware rules.
+    Create chunks from parsed elements with topic-aware merging.
     
     Rules:
-        1. Start new chunk at each heading
-        2. Accumulate paragraphs until token limit
-        3. Keep tables as standalone chunks
-        4. Track metadata (heading, pages, chunk type)
+        1. Major headings (level 1-2) mark topic boundaries
+        2. Headings stay together with their content
+        3. Split only when hitting new major topic AND have content, or MAX_CHUNK_TOKENS
+        4. Tables kept standalone if ENABLE_TABLE_ATOMIC=True
     """
     chunks = []
     current_chunk_content = []
@@ -352,24 +351,20 @@ def _create_chunks_from_elements(elements: List[Dict[str, Any]], total_pages: in
     current_page_start = 1
     current_page_end = 1
     chunk_types = []
+    pending_topic_boundary = False  # Flag for new major heading
     
     def finalize_chunk():
-        """Helper to save current chunk."""
+        """Save current chunk if it has content."""
         if not current_chunk_content:
             return
         
         content = '\n\n'.join(current_chunk_content).strip()
-        if not content:  # Skip empty chunks
+        if not content:
             current_chunk_content.clear()
             chunk_types.clear()
             return
         
         tokens = _estimate_tokens(content)
-        
-        # ALWAYS save chunks with content - never lose information
-        # Only warn if it's smaller than ideal size
-        if tokens < MIN_CHUNK_TOKENS:
-            logger.debug(f"Small chunk created: {tokens} tokens (below recommended {MIN_CHUNK_TOKENS})")
         
         # Determine chunk type
         if 'table' in chunk_types and 'paragraph' in chunk_types:
@@ -379,16 +374,15 @@ def _create_chunks_from_elements(elements: List[Dict[str, Any]], total_pages: in
         else:
             chunk_type = 'paragraph'
         
-        chunk_data = {
+        chunks.append({
             'content': content,
             'chunk_type': chunk_type,
             'heading': current_heading,
             'page_start': current_page_start,
             'page_end': current_page_end
-        }
-        chunks.append(chunk_data)
+        })
         logger.debug(f"Created chunk #{len(chunks)}: {tokens} tokens, type={chunk_type}, "
-                    f"pages={current_page_start}-{current_page_end}")
+                    f"heading='{current_heading[:30] if current_heading else ''}'")
         
         current_chunk_content.clear()
         chunk_types.clear()
@@ -397,22 +391,26 @@ def _create_chunks_from_elements(elements: List[Dict[str, Any]], total_pages: in
         elem_type = element['type']
         elem_page = element.get('page', 1)
         
-        # Update page tracking
         if elem_type == 'page_marker':
             current_page_end = elem_page
             continue
         
-        # Heading: finalize current chunk and start new section
+        # Heading: Mark topic boundary, don't finalize yet
         if elem_type == 'heading':
-            finalize_chunk()
-            current_heading = element['content']
-            current_page_start = elem_page
+            heading_level = element.get('level', 2)
+            heading_text = element['content']
+            
+            # Major heading (level 1-2): Set boundary flag
+            if heading_level <= 2 and current_chunk_content:
+                pending_topic_boundary = True
+            
+            # Update current heading for major headings
+            if heading_level <= 2:
+                current_heading = heading_text
+            
+            # Add heading to chunk content (all levels)
+            current_chunk_content.append('#' * heading_level + ' ' + heading_text)
             current_page_end = elem_page
-            # Add heading to chunk content (use proper markdown)
-            if element['level'] <= 6:
-                current_chunk_content.append('#' * element['level'] + ' ' + element['content'])
-            else:
-                current_chunk_content.append('## ' + element['content'])  # Default to level 2
             continue
         
         # Table: handle based on atomic table setting
@@ -420,8 +418,8 @@ def _create_chunks_from_elements(elements: List[Dict[str, Any]], total_pages: in
             table_content = element['content']
             
             if ENABLE_TABLE_ATOMIC:
-                # Finalize current chunk before table
                 finalize_chunk()
+                pending_topic_boundary = False
                 
                 # Add table with heading as context
                 if current_heading:
@@ -436,46 +434,61 @@ def _create_chunks_from_elements(elements: List[Dict[str, Any]], total_pages: in
                 })
                 logger.debug(f"Created standalone table chunk on page {elem_page}")
                 
-                # Reset for next chunk
                 current_page_start = elem_page
                 current_page_end = elem_page
             else:
-                # Add table to current chunk
                 current_chunk_content.append(table_content)
                 chunk_types.append('table')
                 current_page_end = elem_page
             continue
         
-        # Paragraph: accumulate until token limit
+        # Paragraph: Check boundaries before adding
         if elem_type == 'paragraph':
             para_content = element['content']
             
-            # Check if adding this paragraph exceeds limit
+            # If we have a pending topic boundary and content, finalize before new topic
+            if pending_topic_boundary:
+                # Get content before the last heading(s)
+                content_before_heading = []
+                headings_at_end = []
+                for item in current_chunk_content:
+                    if item.startswith('#'):
+                        headings_at_end.append(item)
+                    else:
+                        if headings_at_end:
+                            content_before_heading.extend(headings_at_end)
+                            headings_at_end = []
+                        content_before_heading.append(item)
+                
+                # If we have content before the last heading(s), finalize old chunk
+                if content_before_heading:
+                    current_chunk_content = content_before_heading
+                    finalize_chunk()
+                    # Start new chunk with the heading(s)
+                    current_chunk_content = headings_at_end
+                    current_page_start = elem_page
+                
+                pending_topic_boundary = False
+            
+            # Check if adding this paragraph exceeds MAX limit
             test_content = '\n\n'.join(current_chunk_content + [para_content])
             test_tokens = _estimate_tokens(test_content)
             
             if test_tokens > MAX_CHUNK_TOKENS and current_chunk_content:
-                # Finalize current chunk before adding this paragraph
                 finalize_chunk()
                 current_page_start = elem_page
             
             current_chunk_content.append(para_content)
             chunk_types.append('paragraph')
             current_page_end = elem_page
-            
-            # Check if we've reached target size (but allow continuing until MAX)
-            current_tokens = _estimate_tokens('\n\n'.join(current_chunk_content))
-            if current_tokens >= TARGET_CHUNK_TOKENS and current_tokens < MAX_CHUNK_TOKENS:
-                # Can finalize here for optimal size, but continue if next para fits
-                pass
     
-    # IMPORTANT: Finalize any remaining chunk at the end
+    # Finalize any remaining chunk
     finalize_chunk()
     
-    # Log summary with coverage
+    # Log summary
     if chunks:
         total_tokens = sum(_estimate_tokens(c['content']) for c in chunks)
-        logger.info(f"Chunk summary: {len(chunks)} chunks, {total_tokens} total tokens, "
+        logger.info(f"Created {len(chunks)} topic-aware chunks, {total_tokens} total tokens, "
                    f"avg {total_tokens/len(chunks):.0f} tokens/chunk")
     
     return chunks

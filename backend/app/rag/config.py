@@ -24,3 +24,7 @@ TARGET_CHUNK_TOKENS = 500    # Target tokens per chunk (approximate)
 MAX_CHUNK_TOKENS = 800       # Maximum tokens per chunk
 MIN_CHUNK_TOKENS = 30        # Minimum tokens to keep a chunk (reduced to preserve small sections)
 ENABLE_TABLE_ATOMIC = True   # Keep tables as single chunks (never split rows)
+
+# Reranker Configuration
+RETRIEVAL_TOP_K = 20   # Candidates fetched from Milvus before reranking
+RERANKER_TOP_N = 5     # Final chunks passed to LLM after reranking
