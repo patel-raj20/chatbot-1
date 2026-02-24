@@ -19,7 +19,8 @@ OCR_LANGUAGE = "eng"  # Language for OCR (eng, ara, fra, etc.)
 OCR_DPI = 300  # DPI for image rendering (higher = better quality, slower)
 OCR_MIN_TEXT_LENGTH = 50  # Minimum text length before triggering full-page OCR
 
-# Chunking Configuration (WORD-BASED)
-CHUNK_SIZE_WORDS = 800        # Target words per chunk (not characters!)
-CHUNK_OVERLAP_WORDS = 100     # Overlap words between chunks
-MIN_CHUNK_SIZE_WORDS = 0     # Minimum words to keep a chunk
+# Chunking Configuration (STRUCTURE-AWARE, TOKEN-BASED)
+TARGET_CHUNK_TOKENS = 500    # Target tokens per chunk (approximate)
+MAX_CHUNK_TOKENS = 800       # Maximum tokens per chunk
+MIN_CHUNK_TOKENS = 30        # Minimum tokens to keep a chunk (reduced to preserve small sections)
+ENABLE_TABLE_ATOMIC = True   # Keep tables as single chunks (never split rows)

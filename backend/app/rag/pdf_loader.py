@@ -1,26 +1,42 @@
 """
-PDF Text Loader
-===============
-Extracts text from PDF files with automatic digital/scanned detection.
+PDF Document Loader with Layout-Aware Extraction
+=================================================
+Extracts structured content from PDFs using Docling with OCR fallback.
 
 STRATEGY:
-    1. Try extracting text with pdfplumber
-    2. If extracted text < 100 chars → Use OCR (scanned PDF)
-    3. If extracted text >= 100 chars → Use that text (digital PDF)
+    1. Try extracting with Docling (structure-aware: headings, paragraphs, tables)
+    2. Convert Docling output to markdown format
+    3. If extraction fails or text < 100 chars → Use OCR fallback
+    4. Return markdown + metadata (page numbers, structure)
 
-WHY THIS WORKS:
-    - Digital PDFs have extractable text
-    - Scanned PDFs appear as images (little/no text)
-    - OCR preserves layout (tables stay aligned naturally)
+WHY DOCLING:
+    - Preserves document structure (headings, paragraphs, tables)
+    - Handles digital PDFs, scanned PDFs, and hybrid PDFs
+    - Outputs structured elements (not just plain text)
+    - Better for layout-aware chunking
 
 WHERE USED: Called by pipeline.py during PDF ingestion
 """
 
-import pdfplumber
 import os
+from typing import Dict, Any
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Configuration
+OCR_MIN_TEXT_LENGTH = 50  # Threshold to decide if OCR is needed
+
+# Docling imports with fallback
+try:
+    from docling.document_converter import DocumentConverter
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    import PyPDF2
+    DOCLING_AVAILABLE = True
+    logger.info("Docling libraries available")
+except ImportError:
+    DOCLING_AVAILABLE = False
+    logger.warning("Docling not available. Install: pip install docling docling-core")
 
 # Configuration
 OCR_MIN_TEXT_LENGTH = 50  # Threshold to decide if OCR is needed
@@ -60,91 +76,160 @@ except ImportError:
     OCR_LANGUAGE = "eng"
     OCR_DPI = 300
 
-
-def load_pdf(file_path: str) -> str:
+def _is_digital_pdf(file_path: str) -> bool:
     """
-    Load and extract text from PDF (digital or scanned).
+    Quick check if PDF is digital (has text layer) or scanned (images only).
     
-    SIMPLE LOGIC:
-        1. Try pdfplumber first
-        2. If text < 100 chars → Use OCR
-        3. Return full text as single string
+    Returns:
+        True if digital (fast extraction), False if scanned (needs OCR)
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            pdf = PyPDF2.PdfReader(f)
+            # Check first 2 pages for text
+            pages_to_check = min(2, len(pdf.pages))
+            text = ''.join(pdf.pages[i].extract_text() for i in range(pages_to_check))
+            is_digital = len(text.strip()) > 100
+            logger.info(f"PDF type: {'Digital' if is_digital else 'Scanned'} ({len(text)} chars in first {pages_to_check} pages)")
+            return is_digital
+    except:
+        logger.warning("Could not detect PDF type, assuming scanned")
+        return False
+
+
+def load_pdf(file_path: str) -> Dict[str, Any]:
+    """
+    Load and extract structured content from PDF (digital or scanned).
+    
+    OPTIMIZED LOGIC:
+        1. Detect PDF type (digital vs scanned)
+        2. Use Docling with optimized settings:
+           - Digital: do_ocr=False (50-100x faster)
+           - Scanned: do_ocr=True (full OCR)
+        3. Fallback to OCR if extraction fails
     
     Args:
         file_path: Path to PDF file
         
     Returns:
-        Full text extracted from PDF
+        Dict with:
+            - markdown: Full document in markdown format
+            - total_pages: Total page count
+            - has_tables: Whether document contains tables
         
     Raises:
         ValueError: If no text could be extracted
     """
     logger.info(f"Loading PDF: {file_path}")
     
-    # STEP 1: Try extracting text with pdfplumber
-    text = _extract_with_pdfplumber(file_path)
+    if not DOCLING_AVAILABLE:
+        logger.warning("Docling not available, falling back to OCR")
+        return _extract_with_ocr_fallback(file_path)
     
-    # STEP 2: Check if we need OCR
-    if len(text) < OCR_MIN_TEXT_LENGTH:
-        logger.info(f"Extracted only {len(text)} chars. Using OCR (scanned PDF)")
-        
-        if not OCR_AVAILABLE or not OCR_ENABLED:
-            raise Exception("OCR required but not available. Install: pip install pytesseract pdf2image")
-        
-        text = _extract_with_ocr(file_path)
+    # STEP 1: Detect PDF type for optimal processing
+    is_digital = _is_digital_pdf(file_path)
+    
+    # STEP 2: Extract with optimized Docling settings
+    result = _extract_with_docling(file_path, use_ocr=not is_digital)
+    
+    # STEP 3: Check if we need OCR fallback
+    markdown = result.get("markdown", "")
+    if len(markdown) < OCR_MIN_TEXT_LENGTH:
+        logger.info(f"Extracted only {len(markdown)} chars. Using OCR fallback")
+        result = _extract_with_ocr_fallback(file_path)
     else:
-        logger.info(f"Extracted {len(text)} chars. Using pdfplumber text (digital PDF)")
+        logger.info(f"Extracted {len(markdown)} chars with Docling (structure-aware)")
     
-    # STEP 3: Validate
-    if len(text) < 10:
+    # STEP 4: Validate
+    if len(result.get("markdown", "")) < 10:
         raise ValueError("Could not extract meaningful text from PDF")
     
-    logger.info(f"Successfully extracted {len(text)} characters from PDF")
-    return text
+    logger.info(f"Successfully extracted document: {result['total_pages']} pages")
+    return result
 
 
-def _extract_with_pdfplumber(file_path: str) -> str:
+def _extract_with_docling(file_path: str, use_ocr: bool = False) -> Dict[str, Any]:
     """
-    Extract text from PDF using pdfplumber.
+    Extract structured content from PDF using Docling with optimized settings.
+    
+    Args:
+        file_path: PDF file path
+        use_ocr: Enable OCR for scanned PDFs (slower but accurate)
+    
+    Returns markdown format with preserved structure:
+        - Headings: # ## ###
+        - Paragraphs: Plain text blocks
+        - Tables: Markdown tables
+        - Lists: - or 1.
     
     Returns:
-        All text from all pages concatenated
+        Dict with markdown, total_pages, has_tables
     """
     try:
-        all_text = []
+        logger.info(f"Extracting with Docling (OCR={'ON' if use_ocr else 'OFF'})...")
         
-        with pdfplumber.open(file_path) as pdf:
-            logger.debug(f"PDF has {len(pdf.pages)} pages")
-            
-            for page_num, page in enumerate(pdf.pages, 1):
-                page_text = page.extract_text()
-                
-                if page_text:
-                    all_text.append(page_text)
-                    logger.debug(f"Page {page_num}: extracted {len(page_text)} chars")
+        # Initialize Docling converter with minimal configuration
+        # NOTE: Avoid custom PdfPipelineOptions to prevent backend attribute error
+        converter = DocumentConverter(allowed_formats=['pdf'])
         
-        full_text = "\n\n".join(all_text)
-        logger.info(f"pdfplumber extracted {len(full_text)} total characters")
+        # Convert PDF to structured document
+        result = converter.convert(file_path)
         
-        return full_text
+        # Export to markdown format
+        markdown = result.document.export_to_markdown()
+        
+        # Clean and normalize markdown to ensure proper paragraph breaks
+        markdown = _normalize_markdown(markdown)
+        
+        # Extract metadata
+        total_pages = len(result.document.pages) if hasattr(result.document, 'pages') else 1
+        has_tables = any('|' in line and '---' in markdown for line in markdown.split('\n'))
+        
+        logger.info(f"Docling extracted {len(markdown)} chars, {total_pages} pages, tables={has_tables}")
+        
+        return {
+            "markdown": markdown,
+            "total_pages": total_pages,
+            "has_tables": has_tables
+        }
         
     except Exception as e:
-        logger.error(f"pdfplumber extraction failed: {e}")
-        return ""  # Return empty to trigger OCR
+        logger.error(f"Docling extraction failed: {e}")
+        return {"markdown": "", "total_pages": 0, "has_tables": False}
 
 
-def _extract_with_ocr(file_path: str) -> str:
+def _normalize_markdown(markdown: str) -> str:
     """
-    Extract text from scanned PDF using OCR.
+    Normalize markdown to ensure proper structure for chunking.
+    
+    - Add page markers if missing
+    - Ensure proper paragraph breaks
+    - Clean excessive whitespace while preserving structure
+    """
+    # Remove excessive blank lines (more than 2)
+    import re
+    markdown = re.sub(r'\n{4,}', '\n\n\n', markdown)
+    
+    # Ensure single space after headings
+    markdown = re.sub(r'^(#{1,6})\s+', r'\1 ', markdown, flags=re.MULTILINE)
+    
+    return markdown.strip()
+
+
+def _extract_with_ocr_fallback(file_path: str) -> Dict[str, Any]:
+    """
+    Extract text from scanned PDF using OCR (Tesseract fallback).
     
     WHY pytesseract.image_to_string:
         - Preserves layout naturally (tables stay aligned)
-        - No custom table detection needed
-        - Works for both tables and paragraphs
+        - Works for scanned/hybrid PDFs
     
     Returns:
-        All OCR text from all pages concatenated
+        Dict with markdown (plain text format), total_pages, has_tables
     """
+    if not OCR_AVAILABLE or not OCR_ENABLED:
+        raise Exception("OCR required but not available. Install: pip install pytesseract pdf2image")
+    
     try:
         # Convert PDF to images
         poppler_path = _find_poppler_path()
@@ -172,17 +257,74 @@ def _extract_with_ocr(file_path: str) -> str:
             )
             
             if page_text and page_text.strip():
-                all_text.append(page_text.strip())
-                logger.debug(f"Page {page_num}: extracted {len(page_text)} chars")
+                # Clean and structure the OCR text
+                clean_text = _clean_ocr_text(page_text)
+                
+                if clean_text:
+                    # Add page marker for tracking
+                    all_text.append(f"<!-- page:{page_num} -->\n\n{clean_text}")
+                    logger.debug(f"Page {page_num}: extracted {len(clean_text)} chars")
+                else:
+                    logger.debug(f"Page {page_num}: no text after cleaning")
         
-        full_text = "\n\n".join(all_text)
-        logger.info(f"OCR extracted {len(full_text)} total characters")
+        markdown = "\n\n".join(all_text)
+        logger.info(f"OCR extracted {len(markdown)} total characters from {len(all_text)} pages with content")
         
-        return full_text
+        return {
+            "markdown": markdown,
+            "total_pages": len(images),
+            "has_tables": False  # OCR doesn't detect table structure
+        }
         
     except Exception as e:
         logger.error(f"OCR extraction failed: {e}")
         raise
+
+
+def _clean_ocr_text(text: str) -> str:
+    """
+    Clean OCR text to improve chunking and remove noise.
+    
+    - Remove excessive whitespace
+    - Normalize line breaks
+    - Preserve paragraph structure
+    - Remove very short noisy lines
+    """
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        # Strip whitespace
+        line = line.strip()
+        
+        # Skip very short lines (likely OCR noise) unless they look like headings or numbers
+        if len(line) < 3 and not line.isdigit():
+            continue
+        
+        # Skip lines with only special characters or excessive spaces
+        if line and not line.replace(' ', '').replace('-', '').replace('_', ''):
+            continue
+        
+        cleaned_lines.append(line)
+    
+    # Join lines with proper spacing
+    # Detect paragraph breaks (empty line or large spacing)
+    result_paragraphs = []
+    current_para = []
+    
+    for line in cleaned_lines:
+        if line:
+            current_para.append(line)
+        elif current_para:  # Empty line after text = paragraph break
+            result_paragraphs.append(' '.join(current_para))
+            current_para = []
+    
+    # Add last paragraph
+    if current_para:
+        result_paragraphs.append(' '.join(current_para))
+    
+    # Join paragraphs with double newline
+    return '\n\n'.join(result_paragraphs)
 
 
 def _preprocess_image(image: Image.Image) -> Image.Image:

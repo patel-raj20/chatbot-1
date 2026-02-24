@@ -6,7 +6,10 @@ python-dotenv
 rapidfuzz
 pymilvus
 sentence-transformers
-pdfplumber
+docling
+docling-core
+onnxruntime
+PyPDF2
 python-multipart
 requests
 redis>=5.0.0

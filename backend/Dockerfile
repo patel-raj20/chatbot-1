@@ -20,6 +20,9 @@ COPY requirements.txt .
 # Install CPU-only torch first (avoids large CUDA downloads)
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
+# Install ONNX Runtime for faster OCR (2-5x speedup on CPU)
+RUN pip install --no-cache-dir onnxruntime
+
 # Install sentence-transformers (will use already installed CPU torch)
 RUN pip install --no-cache-dir sentence-transformers
 

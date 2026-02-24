@@ -10,10 +10,14 @@ WHAT IS A COLLECTION:
     
 COLLECTION SCHEMA:
     - id: Auto-generated unique ID
-    - content: Original text chunk
+    - content: Original text chunk (markdown format)
     - embedding: 768-dimensional vector
     - source_file: MinIO object name
     - original_filename: User's original PDF name
+    - chunk_type: Type of chunk (paragraph, table, mixed)
+    - heading: Last heading before this chunk
+    - page_start: First page number of chunk
+    - page_end: Last page number of chunk
     
 WHERE USED: By pipeline.py and retriever.py for vector storage/search
 """
@@ -44,10 +48,14 @@ def get_collection() -> Collection:
     COLLECTION STRUCTURE:
         fields = [
             id (INT64, primary, auto): Unique identifier
-            content (VARCHAR, max 2048): Text chunk
+            content (VARCHAR, max 15000): Text chunk in markdown format
             embedding (FLOAT_VECTOR, dim 768): Vector representation
             source_file (VARCHAR, max 256): MinIO object name
-            original_filename (VARCHAR, max 256): Original PDF name
+            original_filename (VARCHAR, max 2048): Original PDF name
+            chunk_type (VARCHAR, max 50): Type of chunk (paragraph, table, mixed)
+            heading (VARCHAR, max 500): Last heading before this chunk
+            page_start (INT64): First page number
+            page_end (INT64): Last page number
         ]
     """
     # Ensure Milvus connection is established
@@ -73,10 +81,14 @@ def get_collection() -> Collection:
     # Define collection fields (schema)
     fields = [
         FieldSchema("id", DataType.INT64, is_primary=True, auto_id=True),
-        FieldSchema("content", DataType.VARCHAR, max_length=10000),  # Increased from 2048 to support larger chunks
+        FieldSchema("content", DataType.VARCHAR, max_length=15000),  # Increased to support larger chunks with markdown
         FieldSchema("embedding", DataType.FLOAT_VECTOR, dim=EMBEDDING_DIM),
         FieldSchema("source_file", DataType.VARCHAR, max_length=256),
         FieldSchema("original_filename", DataType.VARCHAR, max_length=2048),
+        FieldSchema("chunk_type", DataType.VARCHAR, max_length=50),  # paragraph, table, mixed
+        FieldSchema("heading", DataType.VARCHAR, max_length=500),    # Last heading before chunk
+        FieldSchema("page_start", DataType.INT64),                   # First page number
+        FieldSchema("page_end", DataType.INT64),                     # Last page number
     ]
     
     schema = CollectionSchema(fields, description="RAG document collection")

@@ -4,7 +4,7 @@ RAG Pipeline
 Main pipeline for PDF ingestion and question answering using RAG.
 
 RAG (Retrieval-Augmented Generation) FLOW:
-    1. INGEST: PDF → Text → Chunks → Embeddings → Vector DB (Milvus)
+    1. INGEST: PDF → Markdown → Structure-Aware Chunks → Embeddings → Vector DB (Milvus)
     2. QUERY: Question → Embedding → Similar Chunks → LLM → Answer
 
 WHY RAG:
@@ -16,7 +16,7 @@ WHERE USED: Called by RAG routes for upload and ask operations
 """
 
 from .pdf_loader import load_pdf
-from .chunker import chunk_text
+from .chunker import chunk_markdown
 from .embedder import embed
 from .collection import get_collection
 from .retriever import retrieve
@@ -29,13 +29,13 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
     """
     Ingest PDF and store in vector database for semantic search.
     
-    WHY: Converts PDF into searchable vector embeddings
+    WHY: Converts PDF into searchable vector embeddings with structural metadata
     WHERE: Called when user uploads PDF via /rag/upload-pdf
     HOW:
-        1. Extract text from PDF (digital or scanned)
-        2. Split text into optimized chunks (800 WORDS with 100 word overlap)
+        1. Extract structured content from PDF (Docling → Markdown)
+        2. Split markdown into structure-aware chunks (sections, paragraphs, tables)
         3. Generate embeddings for each chunk (768-dim vectors)
-        4. Store in Milvus vector database
+        4. Store in Milvus with metadata (chunk_type, heading, pages)
     
     Args:
         pdf_path: Local path to PDF file
@@ -51,36 +51,56 @@ def ingest_pdf(pdf_path: str, source_file: str = "unknown", original_filename: s
     try:
         logger.info(f"Starting PDF ingestion: {original_filename} (MinIO: {source_file})")
         
-        # STEP 1: Extract text from PDF
-        text = load_pdf(pdf_path)
-        logger.info(f"Extracted {len(text)} characters from PDF")
+        # STEP 1: Extract structured content from PDF
+        pdf_result = load_pdf(pdf_path)
+        markdown = pdf_result['markdown']
+        total_pages = pdf_result['total_pages']
+        logger.info(f"Extracted {len(markdown)} characters from {total_pages} pages")
         
-        # STEP 2: Split into chunks
-        chunks = chunk_text(text)
-        if not chunks:
+        # STEP 2: Split into structure-aware chunks
+        chunk_data = chunk_markdown(markdown, total_pages)
+        if not chunk_data:
             raise ValueError("No text extracted from PDF; ingestion skipped.")
-        logger.info(f"Created {len(chunks)} text chunks")
+        logger.info(f"Created {len(chunk_data)} structure-aware chunks")
         
-        # STEP 3: Generate embeddings
-        embeddings = embed(chunks)
+        # STEP 3: Extract content for embeddings
+        chunk_contents = [chunk['content'] for chunk in chunk_data]
+        
+        # STEP 4: Generate embeddings
+        embeddings = embed(chunk_contents)
         if not embeddings:
             raise ValueError("No embeddings generated from PDF text; ingestion skipped.")
         logger.debug(f"Generated {len(embeddings)} embeddings (768 dimensions each)")
         
-        # STEP 4: Store in Milvus
+        # STEP 5: Store in Milvus with metadata
         col = get_collection()
         # NOTE: Appending to collection, not clearing old data
         # This preserves all previously uploaded PDFs
         
-        # Prepare metadata for each chunk
-        source_files = [source_file] * len(chunks)
-        original_filenames = [original_filename] * len(chunks)
+        # Prepare data for insertion
+        contents = [chunk['content'] for chunk in chunk_data]
+        source_files = [source_file] * len(chunk_data)
+        original_filenames = [original_filename] * len(chunk_data)
+        chunk_types = [chunk['chunk_type'] for chunk in chunk_data]
+        headings = [chunk['heading'] for chunk in chunk_data]
+        page_starts = [chunk['page_start'] for chunk in chunk_data]
+        page_ends = [chunk['page_end'] for chunk in chunk_data]
         
-        col.insert([chunks, embeddings, source_files, original_filenames])
+        # Insert with all metadata fields
+        col.insert([
+            contents,
+            embeddings,
+            source_files,
+            original_filenames,
+            chunk_types,
+            headings,
+            page_starts,
+            page_ends
+        ])
         col.flush()
-        logger.info(f"Successfully inserted {len(chunks)} chunks from {original_filename}")
+        logger.info(f"Successfully inserted {len(chunk_data)} chunks from {original_filename}")
         
-        return len(chunks)
+        return len(chunk_data)
         
     except Exception as e:
         logger.error(f"PDF ingestion failed: {type(e).__name__}: {str(e)}")

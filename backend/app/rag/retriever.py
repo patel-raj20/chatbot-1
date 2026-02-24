@@ -71,7 +71,7 @@ def retrieve(query: str, top_k: int = 5, threshold: float = 0.3) -> list[str]:
             "params": {"nprobe": 10}  # Number of clusters to search
         },
         limit=top_k,
-        output_fields=["content"]  # Return text content
+        output_fields=["content", "chunk_type", "heading", "page_start", "page_end"]  # Return content with metadata
     )
     
     # STEP 3: Filter by threshold and extract content
@@ -89,11 +89,16 @@ def retrieve(query: str, top_k: int = 5, threshold: float = 0.3) -> list[str]:
     for idx, hit in enumerate(results[0], 1):
         score = hit.score
         content = hit.entity.get("content")
+        chunk_type = hit.entity.get("chunk_type", "unknown")
+        heading = hit.entity.get("heading", "")
+        page_start = hit.entity.get("page_start", 0)
+        page_end = hit.entity.get("page_end", 0)
         all_scores.append(score)
         
         status = "✓ PASS" if score >= threshold else "✗ FAIL"
         logger.info(f"\n[Chunk {idx}] Score: {score:.4f} {status}")
-        logger.info(f"Content: {content}")
+        logger.info(f"Type: {chunk_type} | Heading: '{heading}' | Pages: {page_start}-{page_end}")
+        logger.info(f"Content: {content[:200]}..." if len(content) > 200 else f"Content: {content}")
         logger.info(f"{'-'*90}")
         
         if score >= threshold:
